@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+    <Metadata>
+        <Identity Id="KubernetesDebugger.955d04ef-6857-4412-ac96-31d774ae18e1" Version="0.1" Language="en-US" Publisher="NEONFORGE LLC" />
+        <DisplayName>KubernetesDebugger</DisplayName>
+        <Description xml:space="preserve">The Kubernetes Debugger extension provides an easy way to attach and debug a process running in a Kubernetes podusing Visual Studio.</Description>
+        <MoreInfo>https://github.com/nforgeio/KubernetesDebugger/README.md</MoreInfo>
+        <License>license.txt</License>
+        <ReleaseNotes>https://github.com/nforgeio/KubernetesDebugger/Doc/Releases/release-0.1.md</ReleaseNotes>
+        <Icon>packageicon.png</Icon>
+        <Tags>kubernetes debugger visual studio 2022</Tags>
+    </Metadata>
+    <Installation>
+        <InstallationTarget  Version="[17.0, 18.0)" Id="Microsoft.VisualStudio.Community">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+        <InstallationTarget Version="[17.4,18.0)" Id="Microsoft.VisualStudio.Pro">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+        <InstallationTarget Version="[17.4,18.0)" Id="Microsoft.VisualStudio.Premium">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+        <InstallationTarget Version="[17.4,18.0)" Id="Microsoft.VisualStudio.Ultimate">
+            <ProductArchitecture>amd64</ProductArchitecture>
+        </InstallationTarget>
+    </Installation>
+    <Dependencies>
+        <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" d:Source="Manual" Version="[4.5,)" />
+    </Dependencies>
+    <Prerequisites>
+        <Prerequisite Id="Microsoft.VisualStudio.Component.CoreEditor" Version="[17.0,18.0)" DisplayName="Visual Studio core editor" />
+    </Prerequisites>
+    <Assets>
+        <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%;PkgdefProjectOutputGroup|" />
+    </Assets>
+</PackageManifest>
