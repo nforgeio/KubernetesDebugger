@@ -9,6 +9,7 @@
         <ReleaseNotes>https://github.com/nforgeio/KubernetesDebugger/Doc/Releases/release-0.1.md</ReleaseNotes>
         <Icon>packageicon.png</Icon>
         <Tags>kubernetes debugger visual studio 2022</Tags>
+        <Preview>true</Preview>
     </Metadata>
     <Installation>
         <InstallationTarget  Version="[17.0, 18.0)" Id="Microsoft.VisualStudio.Community">
