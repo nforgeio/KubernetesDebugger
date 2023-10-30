@@ -54,7 +54,7 @@
           If you do not want an image next to your command, remove the Icon node /> -->
 			<Button guid="guidKubernetesDebuggerPackageCmdSet" id="cmdidAttachKubernetesCommand" priority="0x0100" type="Button">
 				<Parent guid="guidKubernetesDebuggerPackageCmdSet" id="MyMenuGroup" />
-				<Icon guid="guidImages1" id="bmpPic1" />
+				<Icon guid="guidImages" id="bmpPic1" />
 				<Strings>
 					<ButtonText>Attach to Kubernetes...</ButtonText>
 				</Strings>
@@ -68,11 +68,18 @@
             bitmap strip containing the bitmaps and then there are the numeric ids of the elements used
             inside a button definition. An important aspect of this declaration is that the element id
             must be the actual index (1-based) of the bitmap inside the bitmap strip. -->
-			<Bitmap guid="guidImages1" href="Resources\AttachKubernetesCommand.png" usedList="bmpPic1" />
+			<Bitmap guid="guidImages" href="Resources\AttachKubernetesCommand.png" usedList="bmpPic1" />
 		</Bitmaps>
 	</Commands>
 
 	<Symbols>
+		<!-- 
+		Required built-in symbols, from here:
+		
+		https://github.com/trufflesuite/trufflevsix/blob/master/packages/Microsoft.VSSDK.BuildTools.14.3.25407/tools/vssdk/inc/VsDbgCmd.h
+		https://github.com/trufflesuite/trufflevsix/blob/master/packages/Microsoft.VSSDK.BuildTools.14.3.25407/tools/vssdk/inc/vsdebugguids.h
+		-->
+
 		<!-- This is the package guid. -->
 		<GuidSymbol name="guidKubernetesDebuggerPackage" value="{19586d94-a8f1-4b90-b211-5623672d27f2}" />
 
@@ -85,20 +92,6 @@
 
 		<GuidSymbol name="guidImages" value="{d8d68af2-c377-4dea-9f66-12e23ab18524}">
 			<IDSymbol name="bmpPic1" value="1" />
-			<IDSymbol name="bmpPic2" value="2" />
-			<IDSymbol name="bmpPicSearch" value="3" />
-			<IDSymbol name="bmpPicX" value="4" />
-			<IDSymbol name="bmpPicArrows" value="5" />
-			<IDSymbol name="bmpPicStrikethrough" value="6" />
-		</GuidSymbol>
-
-		<GuidSymbol value="{aef9248c-5f64-40e8-922a-246b6a123b85}" name="guidImages1">
-			<IDSymbol name="bmpPic1" value="1" />
-			<IDSymbol name="bmpPic2" value="2" />
-			<IDSymbol name="bmpPicSearch" value="3" />
-			<IDSymbol name="bmpPicX" value="4" />
-			<IDSymbol name="bmpPicArrows" value="5" />
-			<IDSymbol name="bmpPicStrikethrough" value="6" />
 		</GuidSymbol>
 	</Symbols>
 </CommandTable>
