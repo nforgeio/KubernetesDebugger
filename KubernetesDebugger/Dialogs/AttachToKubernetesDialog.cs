@@ -55,7 +55,7 @@ namespace KubernetesDebugger.Dialogs
 
         // Control layout information required for dialog resizing.
 
-        private int     clusterComboBoxRightMargin;
+        private int     contextComboBoxRightMargin;
         private int     namespaceComboBoxRightMargin;
         private int     podComboBoxRightMargin;
         private int     containerComboBoxRightMargin;
@@ -70,17 +70,6 @@ namespace KubernetesDebugger.Dialogs
         private int     cancelButtonRightMargin;
         private int     cancelButtonBottomMargin;
 
-        // Current Kubernetes information.
-
-        private K8SConfiguration    kubeConfig;
-        private List<string>        namespaces = new List<string>();
-        private string              currentNamespace;
-        private string              currentContext;
-        private List<string>        pods = new List<string>();
-        private string              currentPod;
-        private List<string>        containers = new List<string>();
-        private string              currentContainer;
-
         /// <summary>
         /// Constructor.
         /// </summary>
@@ -88,15 +77,30 @@ namespace KubernetesDebugger.Dialogs
         {
             InitializeComponent();
 
-            this.Load += AttachToKubernetesDialog_Load;
+            this.Load              += AttachToKubernetesDialog_Load;
             this.ClientSizeChanged += AttachToKubernetesDialog_ClientSizeChanged;
         }
 
         /// <summary>
+        /// Set to the selected Kubernetes configuration after the user clicks Attach.
+        /// </summary>
+        public K8SConfiguration KubeConfig { get; private set; }
+
+        /// <summary>
+        /// Set to the selected cluster pod after the user clicks Attach.
+        /// </summary>
+        public V1Pod CurrentPod { get; private set; }
+
+        /// <summary>
+        /// Set to the selected cluster container after the user clicks Attach.
+        /// </summary>
+        public V1Container CurrentContainer { get; private set; }
+
+        /// <summary>
         /// Handles initial form loading.
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="args"></param>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
         private async void AttachToKubernetesDialog_Load(object sender, EventArgs args)
         {
             // Replace any "\r\n" sequences in the instructions with actual line endings.
@@ -106,7 +110,7 @@ namespace KubernetesDebugger.Dialogs
             // Compute the control right and bottom margins so we'll be able to
             // relocate the controls when the user resizes the dialog.
 
-            clusterComboBoxRightMargin      = GetRightMargin(clusterComboBox);
+            contextComboBoxRightMargin      = GetRightMargin(contextComboBox);
             namespaceComboBoxRightMargin    = GetRightMargin(namespaceComboBox);
             podComboBoxRightMargin          = GetRightMargin(podComboBox);
             containerComboBoxRightMargin    = GetRightMargin(containerComboBox);
@@ -124,62 +128,12 @@ namespace KubernetesDebugger.Dialogs
 
             try
             {
-                // Load the default kubeconfig file and then initialize the dialog configs.
+                // Load the default kubeconfig file and then initialize the dialog comboboxes.
 
                 await LoadKubeConfigAsync();
-                clusterComboBox.Items.Clear();
-
-                foreach (var context in kubeConfig.Contexts
-                    .OrderBy(context => context.Name, StringComparer.CurrentCultureIgnoreCase))
-                {
-                    clusterComboBox.Items.Add(context.Name);
-
-                    if (context.Name == currentContext)
-                    {
-                        clusterComboBox.SelectedItem = context.Name;
-                    }
-                }
-
-                if (clusterComboBox.SelectedItem == null)
-                {
-                    return;
-                }
-
-                // Obtain the namespaces for the cluster and add them to the namespaces
-                // combobox, initializing the selected namespace to "default".
-
                 await LoadNamespacesAsync();
-
-                namespaceComboBox.Items.Clear();
-                currentNamespace = null;
-
-                if (namespaces.Count > 0)
-                {
-                    foreach (var @namespace in namespaces)
-                    {
-                        namespaceComboBox.Items.Add(@namespace);
-                    }
-
-                    if (namespaces.Contains("default"))
-                    {
-                        currentNamespace               = "default";
-                        namespaceComboBox.SelectedItem = "default";
-                    }
-                }
-
-                // Obtain the pods for the current namespace and add them to the combobox.
-                // Note that we're not going to select a pod.
-
                 await LoadPodsAsync();
-
-                podComboBox.Items.Clear();
-                currentPod = null;
-
-                foreach (var pod in pods
-                    .OrderBy(pod => pod, StringComparer.CurrentCultureIgnoreCase))
-                {
-                    podComboBox.Items.Add(pod);
-                }
+                await LoadContainersAsync();
             }
             catch (Exception e)
             {
@@ -196,11 +150,11 @@ namespace KubernetesDebugger.Dialogs
         /// <summary>
         /// Relocates the controls when the user resizes the dialog.
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="args></param>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
         private void AttachToKubernetesDialog_ClientSizeChanged(object sender, EventArgs args)
         {
-            clusterComboBox.Width      = ClientSize.Width - (clusterComboBoxRightMargin + clusterComboBox.Left);
+            contextComboBox.Width      = ClientSize.Width - (contextComboBoxRightMargin + contextComboBox.Left);
             namespaceComboBox.Width    = ClientSize.Width - (namespaceComboBoxRightMargin + namespaceComboBox.Left);
             podComboBox.Width          = ClientSize.Width - (podComboBoxRightMargin + podComboBox.Left);
             containerComboBox.Width    = ClientSize.Width - (containerComboBoxRightMargin + containerComboBox.Left);
@@ -240,22 +194,47 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
-        /// Loads the standard kubeconfig file into <see cref="kubeConfig"/>.
+        /// Loads the standard kubeconfig file into <see cref="KubeConfig"/> and also loads
+        /// the context names into the contexts combobox, selecting the current one.
         /// </summary>
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadKubeConfigAsync()
         {
-            kubeConfig     = await k8s.KubernetesClientConfiguration.LoadKubeConfigAsync();
-            currentContext = kubeConfig.CurrentContext;
+            KubeConfig = await k8s.KubernetesClientConfiguration.LoadKubeConfigAsync();
+
+            this.SafeInvoke(
+                () =>
+                {
+                    contextComboBox.Items.Clear();
+
+                    foreach (var context in KubeConfig.Contexts
+                        .OrderBy(context => context.Name, StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        contextComboBox.Items.Add(context.Name);
+
+                        if (context.Name == KubeConfig.CurrentContext)
+                        {
+                            contextComboBox.SelectedItem = context.Name;
+                        }
+                    }
+                });
         }
 
         /// <summary>
-        /// Loads the namespaces for the current cluster config.
+        /// Loads the namespaces for the current cluster config (if any) and then selects
+        /// the <b>default</b> namespace if it exists (which should be the case).
         /// </summary>
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadNamespacesAsync()
         {
-            namespaces.Clear();
+            var namespaces     = new List<string>();
+            var currentContext = (string)null;
+
+            this.SafeInvoke(
+                () =>
+                {
+                    currentContext = (string)contextComboBox.SelectedItem;
+                });
 
             if (!string.IsNullOrEmpty(currentContext))
             {
@@ -267,26 +246,166 @@ namespace KubernetesDebugger.Dialogs
                     namespaces.Add(@namespace.Name());
                 }
             }
+
+            this.SafeInvoke(
+                () =>
+                {
+                    namespaceComboBox.Items.Clear();
+
+                    if (namespaces.Count > 0)
+                    {
+                        foreach (var @namespace in namespaces)
+                        {
+                            namespaceComboBox.Items.Add(@namespace);
+                        }
+
+                        if (namespaces.Contains("default"))
+                        {
+                            namespaceComboBox.SelectedItem = "default";
+                        }
+                    }
+                });
         }
 
         /// <summary>
-        /// Loads the pod information for the current cluster and namespace.
+        /// Loads the pod information for the current cluster and namespace into the namespaces
+        /// combobox and selects the first pod (by name).
         /// </summary>
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadPodsAsync()
         {
-            pods.Clear();
+            var pods             = new List<string>();
+            var currentContext   = (string)null;
+            var currentNamespace = (string)null;
 
-            if (!string.IsNullOrEmpty(currentContext) && !string.IsNullOrEmpty(currentNamespace))
+            this.SafeInvoke(
+                () =>
+                {
+                    currentContext   = (string)contextComboBox.SelectedItem;
+                    currentNamespace = (string)namespaceComboBox.SelectedItem;
+                });
+
+            this.CurrentPod = null;
+
+            if (currentContext != null && currentNamespace != null)
             {
                 var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
 
                 foreach (var pod in (await k8s.CoreV1.ListNamespacedPodAsync(currentNamespace)).Items
                     .OrderBy(pod => pod.Name(), StringComparer.CurrentCultureIgnoreCase))
                 {
+                    if (this.CurrentPod == null)
+                    {
+                        this.CurrentPod = pod;
+                    }
+
                     pods.Add(pod.Name());
                 }
             }
+
+            this.SafeInvoke(
+                () =>
+                {
+                    podComboBox.Items.Clear();
+
+                    if (pods.Count > 0)
+                    {
+                        foreach (var pod in pods)
+                        {
+                            podComboBox.Items.Add(pod);
+                        }
+
+                        podComboBox.SelectedItem = pods.First();
+                    }
+                });
+        }
+
+        /// <summary>
+        /// Loads the container information for the the current cluster, namespace and pod into the containers
+        /// combobox and selects the first pod container.
+        /// </summary>
+        /// <returns>The tracking <see cref="Task"/>.</returns>
+        public async Task LoadContainersAsync()
+        {
+            this.SafeInvoke(
+                () =>
+                {
+                    containerComboBox.Items.Clear();
+
+                    if (CurrentPod != null && CurrentPod.Spec.Containers.Count > 0)
+                    {
+                        foreach (var container in CurrentPod.Spec.Containers)
+                        {
+                            containerComboBox.Items.Add(container.Name);
+                        }
+
+                        containerComboBox.SelectedItem = CurrentPod.Spec.Containers.First().Name;
+                    }
+                });
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Handles context combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void contextComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            await LoadNamespacesAsync();
+            await LoadPodsAsync();
+            await LoadContainersAsync();
+        }
+
+        /// <summary>
+        /// Handles namespace combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void namespaceComboBox_SelectedIndexChanged(object sender, EventArgs args)
+        {
+            await LoadPodsAsync();
+            await LoadContainersAsync();
+        }
+
+        /// <summary>
+        /// Handles pod combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void podComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            await LoadContainersAsync();
+        }
+
+        /// <summary>
+        /// Handles container combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void containerComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+        }
+
+        /// <summary>
+        /// Handles attach button clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void attachButton_Click(object sender, EventArgs args)
+        {
+            DialogResult = DialogResult.OK;
+        }
+
+        /// <summary>
+        /// Handles cancel button clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void cancelButton_Click(object sender, EventArgs args)
+        {
+            DialogResult = DialogResult.Cancel;
         }
     }
 }

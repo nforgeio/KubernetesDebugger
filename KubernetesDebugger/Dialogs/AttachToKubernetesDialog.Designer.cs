@@ -30,7 +30,7 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(AttachToKubernetesDialog));
             this.clusterLabel = new System.Windows.Forms.Label();
-            this.clusterComboBox = new System.Windows.Forms.ComboBox();
+            this.contextComboBox = new System.Windows.Forms.ComboBox();
             this.namespaceLabel = new System.Windows.Forms.Label();
             this.namespaceComboBox = new System.Windows.Forms.ComboBox();
             this.podLabel = new System.Windows.Forms.Label();
@@ -60,15 +60,16 @@
             this.clusterLabel.TabIndex = 0;
             this.clusterLabel.Text = "Cluster context:";
             // 
-            // clusterComboBox
+            // contextComboBox
             // 
-            this.clusterComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.clusterComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
-            this.clusterComboBox.FormattingEnabled = true;
-            this.clusterComboBox.Location = new System.Drawing.Point(99, 10);
-            this.clusterComboBox.Name = "clusterComboBox";
-            this.clusterComboBox.Size = new System.Drawing.Size(1003, 21);
-            this.clusterComboBox.TabIndex = 1;
+            this.contextComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.contextComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
+            this.contextComboBox.FormattingEnabled = true;
+            this.contextComboBox.Location = new System.Drawing.Point(99, 10);
+            this.contextComboBox.Name = "contextComboBox";
+            this.contextComboBox.Size = new System.Drawing.Size(1003, 21);
+            this.contextComboBox.TabIndex = 1;
+            this.contextComboBox.SelectedValueChanged += new System.EventHandler(this.contextComboBox_SelectedValueChanged);
             // 
             // namespaceLabel
             // 
@@ -88,6 +89,7 @@
             this.namespaceComboBox.Name = "namespaceComboBox";
             this.namespaceComboBox.Size = new System.Drawing.Size(1003, 21);
             this.namespaceComboBox.TabIndex = 3;
+            this.namespaceComboBox.SelectedIndexChanged += new System.EventHandler(this.namespaceComboBox_SelectedIndexChanged);
             // 
             // podLabel
             // 
@@ -107,6 +109,7 @@
             this.podComboBox.Name = "podComboBox";
             this.podComboBox.Size = new System.Drawing.Size(1003, 21);
             this.podComboBox.TabIndex = 5;
+            this.podComboBox.SelectedValueChanged += new System.EventHandler(this.podComboBox_SelectedValueChanged);
             // 
             // instructionsGroupBox
             // 
@@ -121,11 +124,11 @@
             // instructionsTextBox
             // 
             this.instructionsTextBox.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.instructionsTextBox.Location = new System.Drawing.Point(6, 19);
+            this.instructionsTextBox.Location = new System.Drawing.Point(11, 19);
             this.instructionsTextBox.Multiline = true;
             this.instructionsTextBox.Name = "instructionsTextBox";
             this.instructionsTextBox.ReadOnly = true;
-            this.instructionsTextBox.Size = new System.Drawing.Size(1073, 40);
+            this.instructionsTextBox.Size = new System.Drawing.Size(1068, 40);
             this.instructionsTextBox.TabIndex = 0;
             this.instructionsTextBox.Text = "Use this to attach the debugger to a process running in a remote cluster pod.\\r\\n" +
     "\\r\\nChoose the target cluster, namespace and pod above, select the target proces" +
@@ -179,6 +182,7 @@
             this.attachButton.TabIndex = 10;
             this.attachButton.Text = "Attach";
             this.attachButton.UseVisualStyleBackColor = true;
+            this.attachButton.Click += new System.EventHandler(this.attachButton_Click);
             // 
             // cancelButton
             // 
@@ -188,6 +192,7 @@
             this.cancelButton.TabIndex = 11;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.UseVisualStyleBackColor = true;
+            this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
             // processesGroupBox
             // 
@@ -217,6 +222,7 @@
             this.containerComboBox.Name = "containerComboBox";
             this.containerComboBox.Size = new System.Drawing.Size(1003, 21);
             this.containerComboBox.TabIndex = 7;
+            this.containerComboBox.SelectedValueChanged += new System.EventHandler(this.containerComboBox_SelectedValueChanged);
             // 
             // AttachToKubernetesDialog
             // 
@@ -232,7 +238,7 @@
             this.Controls.Add(this.podLabel);
             this.Controls.Add(this.namespaceComboBox);
             this.Controls.Add(this.namespaceLabel);
-            this.Controls.Add(this.clusterComboBox);
+            this.Controls.Add(this.contextComboBox);
             this.Controls.Add(this.clusterLabel);
             this.Controls.Add(this.processesGroupBox);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
@@ -254,7 +260,7 @@
         #endregion
 
         private System.Windows.Forms.Label clusterLabel;
-        private System.Windows.Forms.ComboBox clusterComboBox;
+        private System.Windows.Forms.ComboBox contextComboBox;
         private System.Windows.Forms.Label namespaceLabel;
         private System.Windows.Forms.ComboBox namespaceComboBox;
         private System.Windows.Forms.Label podLabel;
