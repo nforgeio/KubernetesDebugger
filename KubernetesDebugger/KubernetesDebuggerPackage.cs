@@ -52,7 +52,10 @@ namespace KubernetesDebugger
         /// </summary>
         public const string PackageGuidString = "19586d94-a8f1-4b90-b211-5623672d27f2";
 
-        #region Package Members
+        /// <summary>
+        /// Returns our VSIX package instance.
+        /// </summary>
+        public static KubernetesDebuggerPackage Instance { get; private set; }
 
         /// <summary>
         /// Initialization of the package; this method is called right after the package is sited, so this is the place
@@ -63,12 +66,13 @@ namespace KubernetesDebugger
         /// <returns>A task representing the async work of package initialization, or an already completed task if there is none. Do not return null from this method.</returns>
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            Instance = this;
+
             // When initialized asynchronously, the current thread may be a background thread at this point.
             // Do any initialization that requires the UI thread after switching to the UI thread.
+
             await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
             await AttachKubernetesCommand.InitializeAsync(this);
         }
-
-        #endregion
     }
 }

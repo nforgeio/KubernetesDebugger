@@ -76,6 +76,9 @@
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.0.32112.339" ExcludeAssets="runtime" />
     <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.7.2196" />
+    <PackageReference Include="Neon.Common">
+      <Version>3.1.4</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Resources\AttachKubernetesCommand.png" />

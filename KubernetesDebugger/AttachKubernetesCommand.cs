@@ -105,9 +105,7 @@ namespace KubernetesDebugger
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var dialog = new AttachToKubernetesDialog();
-
-            dialog.ShowDialog();
+            new AttachToKubernetesDialog().ShowDialog();
         }
     }
 }

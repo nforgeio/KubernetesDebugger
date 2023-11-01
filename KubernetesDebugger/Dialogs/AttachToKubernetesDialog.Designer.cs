@@ -38,13 +38,12 @@
             this.instructionsGroupBox = new System.Windows.Forms.GroupBox();
             this.instructionsTextBox = new System.Windows.Forms.TextBox();
             this.processesGrid = new System.Windows.Forms.DataGridView();
-            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.Container = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.attachButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.processesGroupBox = new System.Windows.Forms.GroupBox();
+            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.instructionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.processesGrid)).BeginInit();
             this.processesGroupBox.SuspendLayout();
@@ -55,16 +54,18 @@
             this.clusterLabel.AutoSize = true;
             this.clusterLabel.Location = new System.Drawing.Point(12, 13);
             this.clusterLabel.Name = "clusterLabel";
-            this.clusterLabel.Size = new System.Drawing.Size(42, 13);
+            this.clusterLabel.Size = new System.Drawing.Size(81, 13);
             this.clusterLabel.TabIndex = 0;
-            this.clusterLabel.Text = "Cluster:";
+            this.clusterLabel.Text = "Cluster Context:";
             // 
             // clusterComboBox
             // 
+            this.clusterComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.clusterComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
             this.clusterComboBox.FormattingEnabled = true;
-            this.clusterComboBox.Location = new System.Drawing.Point(76, 10);
+            this.clusterComboBox.Location = new System.Drawing.Point(99, 10);
             this.clusterComboBox.Name = "clusterComboBox";
-            this.clusterComboBox.Size = new System.Drawing.Size(1026, 21);
+            this.clusterComboBox.Size = new System.Drawing.Size(1003, 21);
             this.clusterComboBox.TabIndex = 1;
             // 
             // namespaceLabel
@@ -78,10 +79,12 @@
             // 
             // namespaceComboBox
             // 
+            this.namespaceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.namespaceComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
             this.namespaceComboBox.FormattingEnabled = true;
-            this.namespaceComboBox.Location = new System.Drawing.Point(76, 37);
+            this.namespaceComboBox.Location = new System.Drawing.Point(99, 37);
             this.namespaceComboBox.Name = "namespaceComboBox";
-            this.namespaceComboBox.Size = new System.Drawing.Size(1026, 21);
+            this.namespaceComboBox.Size = new System.Drawing.Size(1003, 21);
             this.namespaceComboBox.TabIndex = 3;
             // 
             // podLabel
@@ -95,10 +98,12 @@
             // 
             // podComboBox
             // 
+            this.podComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.podComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
             this.podComboBox.FormattingEnabled = true;
-            this.podComboBox.Location = new System.Drawing.Point(76, 64);
+            this.podComboBox.Location = new System.Drawing.Point(99, 64);
             this.podComboBox.Name = "podComboBox";
-            this.podComboBox.Size = new System.Drawing.Size(1026, 21);
+            this.podComboBox.Size = new System.Drawing.Size(1003, 21);
             this.podComboBox.TabIndex = 5;
             // 
             // instructionsGroupBox
@@ -122,7 +127,7 @@
             this.instructionsTextBox.TabIndex = 0;
             this.instructionsTextBox.Text = "Use this to attach the debugger to a process running in a remote cluster pod.\\r\\n" +
     "\\r\\nChoose the target cluster, namespace and pod above, select the target proces" +
-    "s below and then click ATTACH.";
+    "s below and then click Attach.";
             // 
             // processesGrid
             // 
@@ -132,7 +137,6 @@
             this.processesGrid.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] {
             this.Process,
             this.ID,
-            this.Container,
             this.CommandLine});
             this.processesGrid.Location = new System.Drawing.Point(16, 19);
             this.processesGrid.Name = "processesGrid";
@@ -143,34 +147,6 @@
             this.processesGrid.ShowCellToolTips = false;
             this.processesGrid.Size = new System.Drawing.Size(1053, 448);
             this.processesGrid.TabIndex = 7;
-            // 
-            // Process
-            // 
-            this.Process.HeaderText = "Process";
-            this.Process.Name = "Process";
-            this.Process.ReadOnly = true;
-            this.Process.Width = 150;
-            // 
-            // ID
-            // 
-            this.ID.HeaderText = "ID";
-            this.ID.Name = "ID";
-            this.ID.ReadOnly = true;
-            this.ID.Width = 75;
-            // 
-            // Container
-            // 
-            this.Container.HeaderText = "Container";
-            this.Container.Name = "Container";
-            this.Container.ReadOnly = true;
-            this.Container.Width = 200;
-            // 
-            // CommandLine
-            // 
-            this.CommandLine.HeaderText = "Command Line";
-            this.CommandLine.Name = "CommandLine";
-            this.CommandLine.ReadOnly = true;
-            this.CommandLine.Width = 800;
             // 
             // attachButton
             // 
@@ -199,6 +175,27 @@
             this.processesGroupBox.TabIndex = 10;
             this.processesGroupBox.TabStop = false;
             this.processesGroupBox.Text = "Available processes";
+            // 
+            // Process
+            // 
+            this.Process.HeaderText = "Process";
+            this.Process.Name = "Process";
+            this.Process.ReadOnly = true;
+            this.Process.Width = 150;
+            // 
+            // ID
+            // 
+            this.ID.HeaderText = "ID";
+            this.ID.Name = "ID";
+            this.ID.ReadOnly = true;
+            this.ID.Width = 75;
+            // 
+            // CommandLine
+            // 
+            this.CommandLine.HeaderText = "Command Line";
+            this.CommandLine.Name = "CommandLine";
+            this.CommandLine.ReadOnly = true;
+            this.CommandLine.Width = 1000;
             // 
             // AttachToKubernetesDialog
             // 
@@ -244,10 +241,9 @@
         private System.Windows.Forms.DataGridView processesGrid;
         private System.Windows.Forms.Button attachButton;
         private System.Windows.Forms.Button cancelButton;
+        private System.Windows.Forms.GroupBox processesGroupBox;
         private System.Windows.Forms.DataGridViewTextBoxColumn Process;
         private System.Windows.Forms.DataGridViewTextBoxColumn ID;
-        private System.Windows.Forms.DataGridViewTextBoxColumn Container;
         private System.Windows.Forms.DataGridViewTextBoxColumn CommandLine;
-        private System.Windows.Forms.GroupBox processesGroupBox;
     }
 }
