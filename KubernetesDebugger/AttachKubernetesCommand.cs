@@ -24,6 +24,8 @@ using System.Threading.Tasks;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 
+using KubernetesDebugger.Dialogs;
+
 using Task = System.Threading.Tasks.Task;
 
 namespace KubernetesDebugger
@@ -103,18 +105,9 @@ namespace KubernetesDebugger
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var message = $"Inside {this.GetType().FullName}.MenuItemCallback()";
-            var title   = "AttachKubernetesCommand";
+            var dialog = new AttachToKubernetesDialog();
 
-            // Show a message box to prove we were here.
-
-            VsShellUtilities.ShowMessageBox(
-                this.package,
-                message,
-                title,
-                OLEMSGICON.OLEMSGICON_INFO,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+            dialog.ShowDialog();
         }
     }
 }
