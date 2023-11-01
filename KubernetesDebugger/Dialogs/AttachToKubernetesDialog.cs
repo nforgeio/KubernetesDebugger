@@ -58,6 +58,7 @@ namespace KubernetesDebugger.Dialogs
         private int     clusterComboBoxRightMargin;
         private int     namespaceComboBoxRightMargin;
         private int     podComboBoxRightMargin;
+        private int     containerComboBoxRightMargin;
         private int     instructionsGroupBoxRightMargin;
         private int     instructionsTextBoxRightMargin;
         private int     processesGroupBoxRightMargin;
@@ -77,6 +78,8 @@ namespace KubernetesDebugger.Dialogs
         private string              currentContext;
         private List<string>        pods = new List<string>();
         private string              currentPod;
+        private List<string>        containers = new List<string>();
+        private string              currentContainer;
 
         /// <summary>
         /// Constructor.
@@ -106,6 +109,7 @@ namespace KubernetesDebugger.Dialogs
             clusterComboBoxRightMargin      = GetRightMargin(clusterComboBox);
             namespaceComboBoxRightMargin    = GetRightMargin(namespaceComboBox);
             podComboBoxRightMargin          = GetRightMargin(podComboBox);
+            containerComboBoxRightMargin    = GetRightMargin(containerComboBox);
             instructionsGroupBoxRightMargin = GetRightMargin(instructionsGroupBox);
             instructionsTextBoxRightMargin  = GetRightMargin(instructionsTextBox);
             processesGroupBoxRightMargin    = GetRightMargin(processesGroupBox);
@@ -199,6 +203,7 @@ namespace KubernetesDebugger.Dialogs
             clusterComboBox.Width      = ClientSize.Width - (clusterComboBoxRightMargin + clusterComboBox.Left);
             namespaceComboBox.Width    = ClientSize.Width - (namespaceComboBoxRightMargin + namespaceComboBox.Left);
             podComboBox.Width          = ClientSize.Width - (podComboBoxRightMargin + podComboBox.Left);
+            containerComboBox.Width    = ClientSize.Width - (containerComboBoxRightMargin + containerComboBox.Left);
             instructionsGroupBox.Width = ClientSize.Width - (instructionsGroupBoxRightMargin + instructionsGroupBox.Left);
             instructionsTextBox.Width  = ClientSize.Width - (instructionsTextBoxRightMargin + instructionsTextBox.Left);
             processesGroupBox.Width    = ClientSize.Width - (processesGroupBoxRightMargin + processesGroupBox.Left);

@@ -38,12 +38,14 @@
             this.instructionsGroupBox = new System.Windows.Forms.GroupBox();
             this.instructionsTextBox = new System.Windows.Forms.TextBox();
             this.processesGrid = new System.Windows.Forms.DataGridView();
-            this.attachButton = new System.Windows.Forms.Button();
-            this.cancelButton = new System.Windows.Forms.Button();
-            this.processesGroupBox = new System.Windows.Forms.GroupBox();
             this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.attachButton = new System.Windows.Forms.Button();
+            this.cancelButton = new System.Windows.Forms.Button();
+            this.processesGroupBox = new System.Windows.Forms.GroupBox();
+            this.containerLabel = new System.Windows.Forms.Label();
+            this.containerComboBox = new System.Windows.Forms.ComboBox();
             this.instructionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.processesGrid)).BeginInit();
             this.processesGroupBox.SuspendLayout();
@@ -54,9 +56,9 @@
             this.clusterLabel.AutoSize = true;
             this.clusterLabel.Location = new System.Drawing.Point(12, 13);
             this.clusterLabel.Name = "clusterLabel";
-            this.clusterLabel.Size = new System.Drawing.Size(81, 13);
+            this.clusterLabel.Size = new System.Drawing.Size(80, 13);
             this.clusterLabel.TabIndex = 0;
-            this.clusterLabel.Text = "Cluster Context:";
+            this.clusterLabel.Text = "Cluster context:";
             // 
             // clusterComboBox
             // 
@@ -109,9 +111,9 @@
             // instructionsGroupBox
             // 
             this.instructionsGroupBox.Controls.Add(this.instructionsTextBox);
-            this.instructionsGroupBox.Location = new System.Drawing.Point(17, 91);
+            this.instructionsGroupBox.Location = new System.Drawing.Point(17, 125);
             this.instructionsGroupBox.Name = "instructionsGroupBox";
-            this.instructionsGroupBox.Size = new System.Drawing.Size(1085, 69);
+            this.instructionsGroupBox.Size = new System.Drawing.Size(1085, 70);
             this.instructionsGroupBox.TabIndex = 6;
             this.instructionsGroupBox.TabStop = false;
             this.instructionsGroupBox.Text = "Instructions";
@@ -123,7 +125,7 @@
             this.instructionsTextBox.Multiline = true;
             this.instructionsTextBox.Name = "instructionsTextBox";
             this.instructionsTextBox.ReadOnly = true;
-            this.instructionsTextBox.Size = new System.Drawing.Size(1073, 44);
+            this.instructionsTextBox.Size = new System.Drawing.Size(1073, 40);
             this.instructionsTextBox.TabIndex = 0;
             this.instructionsTextBox.Text = "Use this to attach the debugger to a process running in a remote cluster pod.\\r\\n" +
     "\\r\\nChoose the target cluster, namespace and pod above, select the target proces" +
@@ -138,43 +140,15 @@
             this.Process,
             this.ID,
             this.CommandLine});
-            this.processesGrid.Location = new System.Drawing.Point(16, 19);
+            this.processesGrid.Location = new System.Drawing.Point(16, 28);
             this.processesGrid.Name = "processesGrid";
             this.processesGrid.ReadOnly = true;
             this.processesGrid.RowHeadersVisible = false;
             this.processesGrid.RowHeadersWidthSizeMode = System.Windows.Forms.DataGridViewRowHeadersWidthSizeMode.DisableResizing;
             this.processesGrid.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
             this.processesGrid.ShowCellToolTips = false;
-            this.processesGrid.Size = new System.Drawing.Size(1053, 448);
-            this.processesGrid.TabIndex = 7;
-            // 
-            // attachButton
-            // 
-            this.attachButton.Location = new System.Drawing.Point(862, 658);
-            this.attachButton.Name = "attachButton";
-            this.attachButton.Size = new System.Drawing.Size(117, 23);
-            this.attachButton.TabIndex = 8;
-            this.attachButton.Text = "Attach";
-            this.attachButton.UseVisualStyleBackColor = true;
-            // 
-            // cancelButton
-            // 
-            this.cancelButton.Location = new System.Drawing.Point(985, 658);
-            this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(117, 23);
-            this.cancelButton.TabIndex = 9;
-            this.cancelButton.Text = "Cancel";
-            this.cancelButton.UseVisualStyleBackColor = true;
-            // 
-            // processesGroupBox
-            // 
-            this.processesGroupBox.Controls.Add(this.processesGrid);
-            this.processesGroupBox.Location = new System.Drawing.Point(17, 166);
-            this.processesGroupBox.Name = "processesGroupBox";
-            this.processesGroupBox.Size = new System.Drawing.Size(1085, 486);
-            this.processesGroupBox.TabIndex = 10;
-            this.processesGroupBox.TabStop = false;
-            this.processesGroupBox.Text = "Available processes";
+            this.processesGrid.Size = new System.Drawing.Size(1053, 404);
+            this.processesGrid.TabIndex = 9;
             // 
             // Process
             // 
@@ -197,11 +171,60 @@
             this.CommandLine.ReadOnly = true;
             this.CommandLine.Width = 1000;
             // 
+            // attachButton
+            // 
+            this.attachButton.Location = new System.Drawing.Point(862, 658);
+            this.attachButton.Name = "attachButton";
+            this.attachButton.Size = new System.Drawing.Size(117, 23);
+            this.attachButton.TabIndex = 10;
+            this.attachButton.Text = "Attach";
+            this.attachButton.UseVisualStyleBackColor = true;
+            // 
+            // cancelButton
+            // 
+            this.cancelButton.Location = new System.Drawing.Point(985, 658);
+            this.cancelButton.Name = "cancelButton";
+            this.cancelButton.Size = new System.Drawing.Size(117, 23);
+            this.cancelButton.TabIndex = 11;
+            this.cancelButton.Text = "Cancel";
+            this.cancelButton.UseVisualStyleBackColor = true;
+            // 
+            // processesGroupBox
+            // 
+            this.processesGroupBox.Controls.Add(this.processesGrid);
+            this.processesGroupBox.Location = new System.Drawing.Point(17, 201);
+            this.processesGroupBox.Name = "processesGroupBox";
+            this.processesGroupBox.Size = new System.Drawing.Size(1085, 451);
+            this.processesGroupBox.TabIndex = 8;
+            this.processesGroupBox.TabStop = false;
+            this.processesGroupBox.Text = "Available processes";
+            // 
+            // containerLabel
+            // 
+            this.containerLabel.AutoSize = true;
+            this.containerLabel.Location = new System.Drawing.Point(12, 94);
+            this.containerLabel.Name = "containerLabel";
+            this.containerLabel.Size = new System.Drawing.Size(55, 13);
+            this.containerLabel.TabIndex = 6;
+            this.containerLabel.Text = "Container:";
+            // 
+            // containerComboBox
+            // 
+            this.containerComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.containerComboBox.FlatStyle = System.Windows.Forms.FlatStyle.Popup;
+            this.containerComboBox.FormattingEnabled = true;
+            this.containerComboBox.Location = new System.Drawing.Point(99, 91);
+            this.containerComboBox.Name = "containerComboBox";
+            this.containerComboBox.Size = new System.Drawing.Size(1003, 21);
+            this.containerComboBox.TabIndex = 7;
+            // 
             // AttachToKubernetesDialog
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1114, 693);
+            this.Controls.Add(this.containerComboBox);
+            this.Controls.Add(this.containerLabel);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.attachButton);
             this.Controls.Add(this.instructionsGroupBox);
@@ -245,5 +268,7 @@
         private System.Windows.Forms.DataGridViewTextBoxColumn Process;
         private System.Windows.Forms.DataGridViewTextBoxColumn ID;
         private System.Windows.Forms.DataGridViewTextBoxColumn CommandLine;
+        private System.Windows.Forms.Label containerLabel;
+        private System.Windows.Forms.ComboBox containerComboBox;
     }
 }
