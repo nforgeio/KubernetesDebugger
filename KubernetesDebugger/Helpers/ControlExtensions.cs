@@ -1,7 +1,7 @@
 ﻿//-----------------------------------------------------------------------------
 // FILE:	    ControlExtensions.cs
 // CONTRIBUTOR: Jeff Lill
-// COPYRIGHT:   Copyright (c) 2021 by neonFORGE, LLC.  All rights reserved.
+// COPYRIGHT:   Copyright (c) 2023 by neonFORGE, LLC.  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ namespace KubernetesDebugger
         /// </summary>
         /// <param name="control">Specifies the Windows Forms control whose UI thread where the action will be invoked.</param>
         /// <param name="action">Specifies the action.</param>
-        public static void SafeInvoke(this Control control, Action action)
+        public static void InvokeOnUiThread(this Control control, Action action)
         {
             Covenant.Requires<ArgumentNullException>(control != null, nameof(control));
             Covenant.Requires<ArgumentNullException>(action != null, nameof(action));

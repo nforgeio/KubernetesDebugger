@@ -17,6 +17,7 @@
     <RootNamespace>KubernetesDebugger</RootNamespace>
     <AssemblyName>KubernetesDebugger</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+	<LangVersion>latest</LangVersion>
     <GeneratePkgDefFile>true</GeneratePkgDefFile>
     <UseCodebase>true</UseCodebase>
     <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
@@ -53,7 +54,8 @@
     <Compile Include="Dialogs\AttachToKubernetesDialog.Designer.cs">
       <DependentUpon>AttachToKubernetesDialog.cs</DependentUpon>
     </Compile>
-    <Compile Include="Extensions\ControlExtensions.cs" />
+    <Compile Include="Helpers\ControlExtensions.cs" />
+    <Compile Include="Helpers\Helper.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="KubernetesDebuggerPackage.cs" />
   </ItemGroup>

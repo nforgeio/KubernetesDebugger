@@ -35,14 +35,14 @@ namespace KubernetesDebugger.Dialogs
         private class ProcessInfo
         {
             /// <summary>
-            /// Returns the process name.
-            /// </summary>
-            public string Process { get; private set; }
-
-            /// <summary>
             /// Returns the process ID.
             /// </summary>
             public string Id { get; private set; }
+
+            /// <summary>
+            /// Returns the process (program) name.
+            /// </summary>
+            public string Process { get; private set; }
 
             /// <summary>
             /// Returns the command line for the process.
@@ -69,6 +69,12 @@ namespace KubernetesDebugger.Dialogs
         private int     attachButtonBottomMargin;
         private int     cancelButtonRightMargin;
         private int     cancelButtonBottomMargin;
+
+        // Other state
+
+        private bool                ignoreComboBoxEvents;
+        private List<V1Pod>         currentPods       = new List<V1Pod>();
+        private List<V1Container>   currentContainers = new List<V1Container>();
 
         /// <summary>
         /// Constructor.
@@ -130,10 +136,23 @@ namespace KubernetesDebugger.Dialogs
             {
                 // Load the default kubeconfig file and then initialize the dialog comboboxes.
 
-                await LoadKubeConfigAsync();
-                await LoadNamespacesAsync();
-                await LoadPodsAsync();
-                await LoadContainersAsync();
+                try
+                {
+                    // Disable handling of combobox selection events while we're
+                    // initializing things for better performance.
+
+                    ignoreComboBoxEvents = true;
+
+                    await LoadKubeConfigAsync();
+                    await LoadNamespacesAsync();
+                    await LoadPodsAsync();
+                    await LoadContainersAsync();
+                    await LoadProcessesAsync();
+                }
+                finally
+                {
+                    ignoreComboBoxEvents = false;
+                }
             }
             catch (Exception e)
             {
@@ -194,6 +213,132 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
+        /// Handles context combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void contextComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            if (ignoreComboBoxEvents)
+            {
+                return;
+            }
+
+            try
+            {
+                ignoreComboBoxEvents = true;
+
+                await LoadNamespacesAsync();
+                await LoadPodsAsync();
+                await LoadContainersAsync();
+                await LoadProcessesAsync();
+            }
+            finally
+            {
+                ignoreComboBoxEvents = false;
+            }
+        }
+
+        /// <summary>
+        /// Handles namespace combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void namespaceComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            if (ignoreComboBoxEvents)
+            {
+                return;
+            }
+
+            try
+            {
+                ignoreComboBoxEvents = true;
+
+                await LoadPodsAsync();
+                await LoadContainersAsync();
+                await LoadProcessesAsync();
+            }
+            finally
+            {
+                ignoreComboBoxEvents = false;
+            }
+        }
+
+        /// <summary>
+        /// Handles pod combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void podComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            if (ignoreComboBoxEvents)
+            {
+                return;
+            }
+
+            try
+            {
+                ignoreComboBoxEvents = true;
+
+                this.CurrentPod = currentPods.FirstOrDefault(pod => pod.Name() == (string)podComboBox.SelectedItem);
+
+                await LoadContainersAsync();
+                await LoadProcessesAsync();
+            }
+            finally
+            {
+                ignoreComboBoxEvents = false;
+            }
+        }
+
+        /// <summary>
+        /// Handles container combobox selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private async void containerComboBox_SelectedValueChanged(object sender, EventArgs args)
+        {
+            if (ignoreComboBoxEvents)
+            {
+                return;
+            }
+
+            try
+            {
+                ignoreComboBoxEvents = true;
+
+                this.CurrentContainer = currentContainers.FirstOrDefault(container => container.Name == (string)containerComboBox.SelectedItem);
+
+                await LoadProcessesAsync();
+            }
+            finally
+            {
+                ignoreComboBoxEvents = false;
+            }
+        }
+
+        /// <summary>
+        /// Handles attach button clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void attachButton_Click(object sender, EventArgs args)
+        {
+            DialogResult = DialogResult.OK;
+        }
+
+        /// <summary>
+        /// Handles cancel button clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void cancelButton_Click(object sender, EventArgs args)
+        {
+            DialogResult = DialogResult.Cancel;
+        }
+
+        /// <summary>
         /// Loads the standard kubeconfig file into <see cref="KubeConfig"/> and also loads
         /// the context names into the contexts combobox, selecting the current one.
         /// </summary>
@@ -202,7 +347,7 @@ namespace KubernetesDebugger.Dialogs
         {
             KubeConfig = await k8s.KubernetesClientConfiguration.LoadKubeConfigAsync();
 
-            this.SafeInvoke(
+            this.InvokeOnUiThread(
                 () =>
                 {
                     contextComboBox.Items.Clear();
@@ -230,7 +375,7 @@ namespace KubernetesDebugger.Dialogs
             var namespaces     = new List<string>();
             var currentContext = (string)null;
 
-            this.SafeInvoke(
+            this.InvokeOnUiThread(
                 () =>
                 {
                     currentContext = (string)contextComboBox.SelectedItem;
@@ -247,7 +392,7 @@ namespace KubernetesDebugger.Dialogs
                 }
             }
 
-            this.SafeInvoke(
+            this.InvokeOnUiThread(
                 () =>
                 {
                     namespaceComboBox.Items.Clear();
@@ -278,7 +423,7 @@ namespace KubernetesDebugger.Dialogs
             var currentContext   = (string)null;
             var currentNamespace = (string)null;
 
-            this.SafeInvoke(
+            this.InvokeOnUiThread(
                 () =>
                 {
                     currentContext   = (string)contextComboBox.SelectedItem;
@@ -291,7 +436,9 @@ namespace KubernetesDebugger.Dialogs
             {
                 var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
 
-                foreach (var pod in (await k8s.CoreV1.ListNamespacedPodAsync(currentNamespace)).Items
+                currentPods = (await k8s.CoreV1.ListNamespacedPodAsync(currentNamespace)).Items.ToList();
+
+                foreach (var pod in currentPods
                     .OrderBy(pod => pod.Name(), StringComparer.CurrentCultureIgnoreCase))
                 {
                     if (this.CurrentPod == null)
@@ -302,8 +449,12 @@ namespace KubernetesDebugger.Dialogs
                     pods.Add(pod.Name());
                 }
             }
+            else
+            {
+                currentPods.Clear();
+            }
 
-            this.SafeInvoke(
+            this.InvokeOnUiThread(
                 () =>
                 {
                     podComboBox.Items.Clear();
@@ -321,25 +472,37 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
-        /// Loads the container information for the the current cluster, namespace and pod into the containers
-        /// combobox and selects the first pod container.
+        /// Loads the containers for the current pod into the containers combobox.
         /// </summary>
         /// <returns>The tracking <see cref="Task"/>.</returns>
-        public async Task LoadContainersAsync()
+        private async Task LoadContainersAsync()
         {
-            this.SafeInvoke(
+            this.CurrentContainer = null;
+
+            this.InvokeOnUiThread(
                 () =>
                 {
                     containerComboBox.Items.Clear();
 
                     if (CurrentPod != null && CurrentPod.Spec.Containers.Count > 0)
                     {
-                        foreach (var container in CurrentPod.Spec.Containers)
+                        currentContainers = CurrentPod.Spec.Containers.ToList();
+
+                        foreach (var container in currentContainers)
                         {
                             containerComboBox.Items.Add(container.Name);
+
+                            if (this.CurrentContainer == null)
+                            {
+                                this.CurrentContainer = container;
+                            }
                         }
 
                         containerComboBox.SelectedItem = CurrentPod.Spec.Containers.First().Name;
+                    }
+                    else
+                    {
+                        currentContainers.Clear();
                     }
                 });
 
@@ -347,65 +510,25 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
-        /// Handles context combobox selection changes.
+        /// Fetches information about the processes running in the current pod and then 
+        /// loads this into the data grid.
         /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private async void contextComboBox_SelectedValueChanged(object sender, EventArgs args)
+        /// <returns>The tracking <see cref="Task"/>.</returns>
+        private async Task LoadProcessesAsync()
         {
-            await LoadNamespacesAsync();
-            await LoadPodsAsync();
-            await LoadContainersAsync();
-        }
+            if (CurrentPod == null || CurrentContainer == null)
+            {
+                this.InvokeOnUiThread(() => processesGrid.Rows.Clear());
+                return;
+            }
 
-        /// <summary>
-        /// Handles namespace combobox selection changes.
-        /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private async void namespaceComboBox_SelectedIndexChanged(object sender, EventArgs args)
-        {
-            await LoadPodsAsync();
-            await LoadContainersAsync();
-        }
+            var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
+            var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "/bin/ps");
 
-        /// <summary>
-        /// Handles pod combobox selection changes.
-        /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private async void podComboBox_SelectedValueChanged(object sender, EventArgs args)
-        {
-            await LoadContainersAsync();
-        }
-
-        /// <summary>
-        /// Handles container combobox selection changes.
-        /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private async void containerComboBox_SelectedValueChanged(object sender, EventArgs args)
-        {
-        }
-
-        /// <summary>
-        /// Handles attach button clicks.
-        /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private void attachButton_Click(object sender, EventArgs args)
-        {
-            DialogResult = DialogResult.OK;
-        }
-
-        /// <summary>
-        /// Handles cancel button clicks.
-        /// </summary>
-        /// <param name="sender">Specifies the event source.</param>
-        /// <param name="args">Specfies the event args.</param>
-        private void cancelButton_Click(object sender, EventArgs args)
-        {
-            DialogResult = DialogResult.Cancel;
+            // Exec the [/usr/bin/ps -eo pid,cmd,args] command within the current pod container.
+            // This will result in command output that looks something like:
+            //
+            // 
         }
     }
 }

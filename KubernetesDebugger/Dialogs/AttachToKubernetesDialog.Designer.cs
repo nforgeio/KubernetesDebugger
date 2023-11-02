@@ -89,7 +89,7 @@
             this.namespaceComboBox.Name = "namespaceComboBox";
             this.namespaceComboBox.Size = new System.Drawing.Size(1003, 21);
             this.namespaceComboBox.TabIndex = 3;
-            this.namespaceComboBox.SelectedIndexChanged += new System.EventHandler(this.namespaceComboBox_SelectedIndexChanged);
+            this.namespaceComboBox.SelectedValueChanged += new System.EventHandler(this.namespaceComboBox_SelectedValueChanged);
             // 
             // podLabel
             // 
