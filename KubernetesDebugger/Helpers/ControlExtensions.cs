@@ -51,5 +51,18 @@ namespace KubernetesDebugger
                 action();
             }
         }
+
+        /// <summary>
+        /// Ensures that the current thread is the control's UI thread.
+        /// </summary>
+        /// <param name="control">Specifies the control.</param>
+        /// <exception cref="InvalidOperationException">Throw when the current thread is not the UI tyhread.</exception>
+        public static void EnsureOnUiThread(this Control control)
+        {
+            if (control.InvokeRequired)
+            {
+                throw new InvalidOperationException("Not running on the UI thread.");
+            }
+        }
     }
 }

@@ -38,15 +38,15 @@
             this.instructionsGroupBox = new System.Windows.Forms.GroupBox();
             this.instructionsTextBox = new System.Windows.Forms.TextBox();
             this.processesGrid = new System.Windows.Forms.DataGridView();
-            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.attachButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.processesGroupBox = new System.Windows.Forms.GroupBox();
             this.processErrorLabel = new System.Windows.Forms.Label();
             this.containerLabel = new System.Windows.Forms.Label();
             this.containerComboBox = new System.Windows.Forms.ComboBox();
+            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.instructionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.processesGrid)).BeginInit();
             this.processesGroupBox.SuspendLayout();
@@ -145,39 +145,20 @@
             this.ID,
             this.CommandLine});
             this.processesGrid.Location = new System.Drawing.Point(16, 28);
+            this.processesGrid.MultiSelect = false;
             this.processesGrid.Name = "processesGrid";
             this.processesGrid.ReadOnly = true;
             this.processesGrid.RowHeadersVisible = false;
             this.processesGrid.RowHeadersWidthSizeMode = System.Windows.Forms.DataGridViewRowHeadersWidthSizeMode.DisableResizing;
             this.processesGrid.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
+            this.processesGrid.ShowCellErrors = false;
             this.processesGrid.ShowCellToolTips = false;
+            this.processesGrid.ShowEditingIcon = false;
+            this.processesGrid.ShowRowErrors = false;
             this.processesGrid.Size = new System.Drawing.Size(1053, 404);
             this.processesGrid.TabIndex = 9;
             this.processesGrid.SelectionChanged += new System.EventHandler(this.processesGrid_SelectionChanged);
-            // 
-            // Process
-            // 
-            this.Process.DataPropertyName = "Name";
-            this.Process.HeaderText = "Process";
-            this.Process.Name = "Process";
-            this.Process.ReadOnly = true;
-            this.Process.Width = 150;
-            // 
-            // ID
-            // 
-            this.ID.DataPropertyName = "Pid";
-            this.ID.HeaderText = "ID";
-            this.ID.Name = "ID";
-            this.ID.ReadOnly = true;
-            this.ID.Width = 75;
-            // 
-            // CommandLine
-            // 
-            this.CommandLine.DataPropertyName = "Command";
-            this.CommandLine.HeaderText = "Command Line";
-            this.CommandLine.Name = "CommandLine";
-            this.CommandLine.ReadOnly = true;
-            this.CommandLine.Width = 1000;
+            this.processesGrid.DoubleClick += new System.EventHandler(this.processesGrid_DoubleClick);
             // 
             // attachButton
             // 
@@ -239,6 +220,33 @@
             this.containerComboBox.Size = new System.Drawing.Size(1003, 21);
             this.containerComboBox.TabIndex = 7;
             this.containerComboBox.SelectedValueChanged += new System.EventHandler(this.containerComboBox_SelectedValueChanged);
+            // 
+            // Process
+            // 
+            this.Process.DataPropertyName = "Name";
+            this.Process.HeaderText = "Process";
+            this.Process.Name = "Process";
+            this.Process.ReadOnly = true;
+            this.Process.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.Process.Width = 150;
+            // 
+            // ID
+            // 
+            this.ID.DataPropertyName = "Pid";
+            this.ID.HeaderText = "ID";
+            this.ID.Name = "ID";
+            this.ID.ReadOnly = true;
+            this.ID.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.ID.Width = 75;
+            // 
+            // CommandLine
+            // 
+            this.CommandLine.DataPropertyName = "Command";
+            this.CommandLine.HeaderText = "Command Line";
+            this.CommandLine.Name = "CommandLine";
+            this.CommandLine.ReadOnly = true;
+            this.CommandLine.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.CommandLine.Width = 1000;
             // 
             // AttachToKubernetesDialog
             // 

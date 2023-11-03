@@ -29,6 +29,19 @@ namespace KubernetesDebugger.Dialogs
     /// </summary>
     public partial class AttachToKubernetesDialog : Form
     {
+        //---------------------------------------------------------------------
+        // Static members
+
+        // We're going to remember the context and namespace from previous runs.
+
+
+        private static string   previousContext;
+        private static string   previousNamespace;
+        private static string   previousPod;
+
+        //---------------------------------------------------------------------
+        // Instance members
+
         // Control layout information required for dialog resizing.
 
         private int     contextComboBoxRightMargin;
@@ -51,6 +64,7 @@ namespace KubernetesDebugger.Dialogs
         // Other state
 
         private bool                ignoreComboBoxEvents;
+        private bool                comError;
         private List<V1Pod>         currentPods       = new List<V1Pod>();
         private List<V1Container>   currentContainers = new List<V1Container>();
         private string              psError           = null;
@@ -62,8 +76,8 @@ namespace KubernetesDebugger.Dialogs
         {
             InitializeComponent();
 
-            this.Load              += AttachToKubernetesDialog_Load;
-            this.ClientSizeChanged += AttachToKubernetesDialog_ClientSizeChanged;
+            Load              += AttachToKubernetesDialog_Load;
+            ClientSizeChanged += AttachToKubernetesDialog_ClientSizeChanged;
         }
 
         /// <summary>
@@ -80,6 +94,11 @@ namespace KubernetesDebugger.Dialogs
         /// Set to the selected cluster container after the user clicks Attach.
         /// </summary>
         public V1Container CurrentContainer { get; private set; }
+
+        /// <summary>
+        /// Set to the target process ID after the user clicks attach.
+        /// </summary>
+        public int Pid { get; private set; }
 
         /// <summary>
         /// Handles initial form loading.
@@ -145,7 +164,7 @@ namespace KubernetesDebugger.Dialogs
                 }
                 catch (Exception e)
                 {
-                    SetProcessError($"Error communicating with the Kubernetes cluster:\r\n\r\n{NeonHelper.ExceptionError(e)}");
+                    SetProcessComError(e);
                     SetAttachButtonEnabledState();
                 }
                 finally
@@ -239,6 +258,7 @@ namespace KubernetesDebugger.Dialogs
             }
             finally
             {
+                comError             = false;
                 ignoreComboBoxEvents = false;
             }
         }
@@ -268,6 +288,7 @@ namespace KubernetesDebugger.Dialogs
             }
             finally
             {
+                comError             = false;
                 ignoreComboBoxEvents = false;
             }
         }
@@ -287,8 +308,7 @@ namespace KubernetesDebugger.Dialogs
             try
             {
                 ignoreComboBoxEvents = true;
-
-                this.CurrentPod = currentPods.FirstOrDefault(pod => pod.Name() == (string)podComboBox.SelectedItem);
+                CurrentPod           = currentPods.FirstOrDefault(pod => pod.Name() == (string)podComboBox.SelectedItem);
 
                 await LoadContainersAsync();
                 await LoadProcessesAsync();
@@ -298,6 +318,7 @@ namespace KubernetesDebugger.Dialogs
             }
             finally
             {
+                comError             = false;
                 ignoreComboBoxEvents = false;
             }
         }
@@ -317,13 +338,13 @@ namespace KubernetesDebugger.Dialogs
             try
             {
                 ignoreComboBoxEvents = true;
-
-                this.CurrentContainer = currentContainers.FirstOrDefault(container => container.Name == (string)containerComboBox.SelectedItem);
+                CurrentContainer     = currentContainers.FirstOrDefault(container => container.Name == (string)containerComboBox.SelectedItem);
 
                 await LoadProcessesAsync();
             }
             finally
             {
+                comError             = false;
                 ignoreComboBoxEvents = false;
             }
         }
@@ -339,12 +360,30 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
+        /// Handles process grid double-clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void processesGrid_DoubleClick(object sender, EventArgs args)
+        {
+            if (attachButton.Enabled)
+            {
+                attachButton_Click(sender, args);
+            }
+        }
+
+        /// <summary>
         /// Handles attach button clicks.
         /// </summary>
         /// <param name="sender">Specifies the event source.</param>
         /// <param name="args">Specfies the event args.</param>
         private void attachButton_Click(object sender, EventArgs args)
         {
+            Pid = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+
+            previousContext   = (string)contextComboBox.SelectedItem;
+            previousNamespace = (string)namespaceComboBox.SelectedItem;
+
             DialogResult = DialogResult.OK;
         }
 
@@ -355,6 +394,9 @@ namespace KubernetesDebugger.Dialogs
         /// <param name="args">Specfies the event args.</param>
         private void cancelButton_Click(object sender, EventArgs args)
         {
+            previousContext   = (string)contextComboBox.SelectedItem;
+            previousNamespace = (string)namespaceComboBox.SelectedItem;
+
             DialogResult = DialogResult.Cancel;
         }
 
@@ -376,12 +418,24 @@ namespace KubernetesDebugger.Dialogs
                         .OrderBy(context => context.Name, StringComparer.CurrentCultureIgnoreCase))
                     {
                         contextComboBox.Items.Add(context.Name);
-
-                        if (context.Name == KubeConfig.CurrentContext)
-                        {
-                            contextComboBox.SelectedItem = context.Name;
-                        }
                     }
+
+                    // When we saved the context from a previous run of the dialog,
+                    // try to select that context, otherwise select the current context.
+
+                    if (previousContext != null && KubeConfig.Contexts.Any(context => context.Name == previousContext))
+                    {
+                        contextComboBox.SelectedItem = previousContext;
+                    }
+                    else if (!string.IsNullOrEmpty(KubeConfig.CurrentContext))
+                    {
+                        contextComboBox.SelectedItem = KubeConfig.CurrentContext;
+
+                        previousNamespace = null;   // $hack(jefflill): Don't try to restore the namespace when the context doesn't exist.
+                        previousPod       = null;   // $hack(jefflill): Don't try to restore the pod when the context doesn't exist.
+                    }
+
+                    previousContext = null;
                 });
         }
 
@@ -401,15 +455,29 @@ namespace KubernetesDebugger.Dialogs
                     currentContext = (string)contextComboBox.SelectedItem;
                 });
 
-            if (!string.IsNullOrEmpty(currentContext))
+            try
             {
-                var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
-
-                foreach (var @namespace in (await k8s.CoreV1.ListNamespaceAsync()).Items
-                    .OrderBy(@namespace => @namespace.Name(), StringComparer.CurrentCultureIgnoreCase))
+                if (!string.IsNullOrEmpty(currentContext))
                 {
-                    namespaces.Add(@namespace.Name());
+                    var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
+
+                    foreach (var @namespace in (await k8s.CoreV1.ListNamespaceAsync()).Items
+                        .OrderBy(@namespace => @namespace.Name(), StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        namespaces.Add(@namespace.Name());
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                this.InvokeOnUiThread(
+                    () =>
+                    {
+                        namespaceComboBox.Items.Clear();
+                        SetProcessComError(e);
+                    });
+
+                return;
             }
 
             this.InvokeOnUiThread(
@@ -424,10 +492,18 @@ namespace KubernetesDebugger.Dialogs
                             namespaceComboBox.Items.Add(@namespace);
                         }
 
-                        if (namespaces.Contains("default"))
+                        if (previousNamespace != null && namespaces.Contains(previousNamespace))
+                        {
+                            namespaceComboBox.SelectedItem = previousNamespace;
+                        }
+                        else if (namespaces.Contains("default"))
                         {
                             namespaceComboBox.SelectedItem = "default";
+
+                            previousPod = null;   // $hack(jefflill): Don't try to restore the pod when the namespace doesn't exist.
                         }
+
+                        previousNamespace = null;
                     }
                 });
         }
@@ -439,6 +515,13 @@ namespace KubernetesDebugger.Dialogs
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadPodsAsync()
         {
+            if (comError)
+            {
+                CurrentPod = null;
+                Invoke(() => podComboBox.Items.Clear());
+                return;
+            }
+
             var pods             = new List<string>();
             var currentContext   = (string)null;
             var currentNamespace = (string)null;
@@ -450,23 +533,40 @@ namespace KubernetesDebugger.Dialogs
                     currentNamespace = (string)namespaceComboBox.SelectedItem;
                 });
 
-            this.CurrentPod = null;
+            CurrentPod = null;
 
             if (currentContext != null && currentNamespace != null)
             {
-                var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
-
-                currentPods = (await k8s.CoreV1.ListNamespacedPodAsync(currentNamespace)).Items.ToList();
-
-                foreach (var pod in currentPods
-                    .OrderBy(pod => pod.Name(), StringComparer.CurrentCultureIgnoreCase))
+                try
                 {
-                    if (this.CurrentPod == null)
+                    var k8s = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: currentContext));
+
+                    currentPods = (await k8s.CoreV1.ListNamespacedPodAsync(currentNamespace)).Items.ToList();
+
+                    foreach (var pod in currentPods
+                        .OrderBy(pod => pod.Name(), StringComparer.CurrentCultureIgnoreCase))
                     {
-                        this.CurrentPod = pod;
+                        if (CurrentPod == null)
+                        {
+                            CurrentPod = pod;
+                        }
+
+                        pods.Add(pod.Name());
                     }
 
-                    pods.Add(pod.Name());
+                    if (previousPod != null && currentPods.Any(pod => pod.Name() == previousPod))
+                    {
+                        CurrentPod = currentPods.Single(pod => pod.Name() == previousPod);
+                    }
+                }
+                catch (Exception e)
+                {
+                    SetProcessComError(e);
+                    return;
+                }
+                finally
+                {
+                    previousPod = null;
                 }
             }
             else
@@ -497,7 +597,13 @@ namespace KubernetesDebugger.Dialogs
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadContainersAsync()
         {
-            this.CurrentContainer = null;
+            CurrentContainer = null;
+
+            if (comError)
+            {
+                this.InvokeOnUiThread(() => containerComboBox.Items.Clear());
+                return;
+            }
 
             this.InvokeOnUiThread(
                 () =>
@@ -512,9 +618,9 @@ namespace KubernetesDebugger.Dialogs
                         {
                             containerComboBox.Items.Add(container.Name);
 
-                            if (this.CurrentContainer == null)
+                            if (CurrentContainer == null)
                             {
-                                this.CurrentContainer = container;
+                                CurrentContainer = container;
                             }
                         }
 
@@ -530,10 +636,88 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
+        /// Fetches information about the processes running in the current pod and then 
+        /// loads this into the data grid.
+        /// </summary>
+        /// <returns>The tracking <see cref="Task"/>.</returns>
+        private async Task LoadProcessesAsync()
+        {
+            if (CurrentPod == null || CurrentContainer == null || comError)
+            {
+                this.InvokeOnUiThread(() => processesGrid.Rows.Clear());
+                return;
+            }
+
+            // Exec the [ps -eo pid,cmd] command within the current pod container.
+            // This will result in command output that looks something like:
+            // 
+            //      PID COMMAND
+            //        1 /init
+            //      140 /init
+            //      141 /init
+            //      142 /mnt/wsl/docker-desktop/docker-desktop-user-distro proxy --distro-name neon-kubebuilder --docker-desktop-root /mnt/wsl/docker-desktop C:\Progr
+            //      159 /init
+            //      160 docker serve --address unix:///root/.docker/run/docker-cli-api.sock
+            //      195 /init
+            //      196 /init
+            //      197 -bash
+            //      513 ps -eo pid,args
+
+            try
+            {
+                var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
+                var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "ps", "-eo", "pid,cmd");
+
+                if (response.ExitCode == 0)
+                {
+                    psError = null;
+
+                    // Extract the process information from the [ps] command output.
+
+                    var processes = new List<ProcessInfo>();
+
+                    foreach (var rawLine in response.OutputText
+                        .ToLines()
+                        .Skip(1))
+                    {
+                        var line     = rawLine.Trim();
+                        var spacePos = line.IndexOf(' ');
+                        var pid      = int.Parse(line.Substring(0, spacePos));
+                        var command  = line.Substring(spacePos + 1);
+
+                        spacePos = command.IndexOf(' ');
+
+                        var name = spacePos == -1 ? command : command.Substring(0, spacePos);
+
+                        if (name != "ps")
+                        {
+                            processes.Add(new ProcessInfo(pid, name, command));
+                        }
+                    }
+
+                    processesGrid.DataSource = processes.OrderBy(process => process.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+                }
+                else
+                {
+                    psError = "Cannot list container processes because the [ps] command is not on the path.";
+                }
+            }
+            catch (Exception e)
+            {
+                SetProcessComError(e);
+            }
+        }
+
+        /// <summary>
         /// Manages the processes grid and process error label based on the current state of the dialog.
         /// </summary>
         private void SetProcessErrorState()
         {
+            if (comError)
+            {
+                return;
+            }
+
             var currentContext   = (string)contextComboBox.SelectedItem;
             var currentNamespace = (string)namespaceComboBox.SelectedItem;
             var currentPod       = (string)podComboBox.SelectedItem;
@@ -555,7 +739,7 @@ namespace KubernetesDebugger.Dialogs
             {
                 SetProcessError("No pod is selected.");
             }
-            else if (string.IsNullOrEmpty(currentPod))
+            else if (string.IsNullOrEmpty(currentContainer))
             {
                 SetProcessError("No container is selected.");
             }
@@ -575,9 +759,28 @@ namespace KubernetesDebugger.Dialogs
         /// <param name="message">Specifies the error message.</param>
         private void SetProcessError(string message)
         {
-            processErrorLabel.Text    = message;
-            processErrorLabel.Visible = true;
-            processesGrid.Visible     = false;
+            this.InvokeOnUiThread(
+                () =>
+                {
+                    processErrorLabel.Text = message;
+                    processErrorLabel.Visible = true;
+                    processesGrid.Visible = false;
+                });
+        }
+
+        /// <summary>
+        /// Hides the processes grid and displays the process error label with communication error details.
+        /// </summary>
+        /// <param name="e">Specifies the error.</param>
+        private void SetProcessComError(Exception e)
+        {
+            this.InvokeOnUiThread(
+                () =>
+                {
+                    comError = true;
+
+                    SetProcessError($"Error communicating with the Kubernetes cluster:\r\n\r\n{NeonHelper.ExceptionError(e)}");
+                });
         }
 
         /// <summary>
@@ -585,6 +788,9 @@ namespace KubernetesDebugger.Dialogs
         /// </summary>
         private void ClearProcessError()
         {
+            this.EnsureOnUiThread();
+
+            comError                  = false;
             processErrorLabel.Text    = string.Empty;
             processErrorLabel.Visible = false;
             processesGrid.Visible     = true;
@@ -595,73 +801,9 @@ namespace KubernetesDebugger.Dialogs
         /// </summary>
         private void SetAttachButtonEnabledState()
         {
+            this.EnsureOnUiThread();
+
             attachButton.Enabled = processesGrid.Visible && processesGrid.SelectedRows.Count > 0;
-        }
-
-        /// <summary>
-        /// Fetches information about the processes running in the current pod and then 
-        /// loads this into the data grid.
-        /// </summary>
-        /// <returns>The tracking <see cref="Task"/>.</returns>
-        private async Task LoadProcessesAsync()
-        {
-            if (CurrentPod == null || CurrentContainer == null)
-            {
-                this.InvokeOnUiThread(() => processesGrid.Rows.Clear());
-                return;
-            }
-
-            // Exec the [ps -eo pid,cmd] command within the current pod container.
-            // This will result in command output that looks something like:
-            // 
-            //      PID COMMAND
-            //        1 /init
-            //      140 /init
-            //      141 /init
-            //      142 /mnt/wsl/docker-desktop/docker-desktop-user-distro proxy --distro-name neon-kubebuilder --docker-desktop-root /mnt/wsl/docker-desktop C:\Progr
-            //      159 /init
-            //      160 docker serve --address unix:///root/.docker/run/docker-cli-api.sock
-            //      195 /init
-            //      196 /init
-            //      197 -bash
-            //      513 ps -eo pid,args
-
-            var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
-            var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "ps", "-eo", "pid,cmd");
-
-            if (response.ExitCode == 0)
-            {
-                psError = null;
-
-                // Extract the process information from the [ps] command output.
-
-                var processes = new List<ProcessInfo>();
-
-                foreach (var rawLine in response.OutputText
-                    .ToLines()
-                    .Skip(1))
-                {
-                    var line     = rawLine.Trim();
-                    var spacePos = line.IndexOf(' ');
-                    var pid      = int.Parse(line.Substring(0, spacePos));
-                    var command  = line.Substring(spacePos + 1);
-
-                    spacePos = command.IndexOf(' ');
-
-                    var name = spacePos == -1 ? command : command.Substring(0, spacePos);
-
-                    if (name != "ps")
-                    {
-                        processes.Add(new ProcessInfo(pid, name, command));
-                    }
-                }
-
-                processesGrid.DataSource = processes.OrderBy(process => process.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-            }
-            else
-            {
-                psError = "Cannot list container processes because the [ps] command is not on the path.";
-            }
         }
     }
 }
