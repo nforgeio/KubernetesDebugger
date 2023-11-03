@@ -16,6 +16,9 @@ using k8s.KubeConfigModels;
 using k8s.Models;
 
 using Neon.Common;
+using KubernetesDebugger.Helpers;
+using EnvDTE;
+using System.Diagnostics.Contracts;
 
 #pragma warning disable VSTHRD100   // Avoid "async void" methods
 
@@ -26,33 +29,6 @@ namespace KubernetesDebugger.Dialogs
     /// </summary>
     public partial class AttachToKubernetesDialog : Form
     {
-        //---------------------------------------------------------------------
-        // Private types
-
-        /// <summary>
-        /// Holds information about a process.
-        /// </summary>
-        private class ProcessInfo
-        {
-            /// <summary>
-            /// Returns the process ID.
-            /// </summary>
-            public string Id { get; private set; }
-
-            /// <summary>
-            /// Returns the process (program) name.
-            /// </summary>
-            public string Process { get; private set; }
-
-            /// <summary>
-            /// Returns the command line for the process.
-            /// </summary>
-            public string Command { get; private set; }
-        }
-
-        //---------------------------------------------------------------------
-        // Implementation
-
         // Control layout information required for dialog resizing.
 
         private int     contextComboBoxRightMargin;
@@ -63,6 +39,8 @@ namespace KubernetesDebugger.Dialogs
         private int     instructionsTextBoxRightMargin;
         private int     processesGroupBoxRightMargin;
         private int     processesGroupBoxBottomMargin;
+        private int     processErrorLabelRightMargin;
+        private int     processErrorLabelBottomMargin;
         private int     processesGridRightMargin;
         private int     processesGridBottomMargin;
         private int     attachButtonRightMargin;
@@ -75,6 +53,7 @@ namespace KubernetesDebugger.Dialogs
         private bool                ignoreComboBoxEvents;
         private List<V1Pod>         currentPods       = new List<V1Pod>();
         private List<V1Container>   currentContainers = new List<V1Container>();
+        private string              psError           = null;
 
         /// <summary>
         /// Constructor.
@@ -113,6 +92,16 @@ namespace KubernetesDebugger.Dialogs
 
             instructionsTextBox.Text = instructionsTextBox.Text.Replace(@"\r\n", Environment.NewLine);
 
+            // Set the position of the [noProcessesLabel] to be the same as
+            // the processes grid and then hide it.
+
+            processErrorLabel.Left    = processesGrid.Left;
+            processErrorLabel.Top     = processesGrid.Top;
+            processErrorLabel.Width   = processesGrid.Width;
+            processErrorLabel.Height  = processesGrid.Height;
+
+            ClearProcessError();
+
             // Compute the control right and bottom margins so we'll be able to
             // relocate the controls when the user resizes the dialog.
 
@@ -124,11 +113,13 @@ namespace KubernetesDebugger.Dialogs
             instructionsTextBoxRightMargin  = GetRightMargin(instructionsTextBox);
             processesGroupBoxRightMargin    = GetRightMargin(processesGroupBox);
             processesGridRightMargin        = GetRightMargin(processesGrid);
+            processErrorLabelRightMargin    = GetRightMargin(processErrorLabel);
             attachButtonRightMargin         = GetRightMargin(attachButton);
             cancelButtonRightMargin         = GetRightMargin(cancelButton);
 
             processesGroupBoxBottomMargin   = GetBottomMargin(processesGroupBox);
             processesGridBottomMargin       = GetBottomMargin(processesGrid);
+            processErrorLabelBottomMargin   = GetBottomMargin(processErrorLabel);
             attachButtonBottomMargin        = GetBottomMargin(attachButton);
             cancelButtonBottomMargin        = GetBottomMargin(cancelButton);
 
@@ -148,6 +139,14 @@ namespace KubernetesDebugger.Dialogs
                     await LoadPodsAsync();
                     await LoadContainersAsync();
                     await LoadProcessesAsync();
+
+                    SetProcessErrorState();
+                    SetAttachButtonEnabledState();
+                }
+                catch (Exception e)
+                {
+                    SetProcessError($"Error communicating with the Kubernetes cluster:\r\n\r\n{NeonHelper.ExceptionError(e)}");
+                    SetAttachButtonEnabledState();
                 }
                 finally
                 {
@@ -181,6 +180,7 @@ namespace KubernetesDebugger.Dialogs
             instructionsTextBox.Width  = ClientSize.Width - (instructionsTextBoxRightMargin + instructionsTextBox.Left);
             processesGroupBox.Width    = ClientSize.Width - (processesGroupBoxRightMargin + processesGroupBox.Left);
             processesGrid.Width        = ClientSize.Width - (processesGridRightMargin + processesGrid.Left);
+            processErrorLabel.Width    = ClientSize.Width - (processErrorLabelRightMargin + processErrorLabel.Left);
 
             attachButton.Left          = ClientSize.Width - (attachButtonRightMargin + attachButton.Width);
             cancelButton.Left          = ClientSize.Width - (cancelButtonRightMargin + cancelButton.Width);
@@ -190,6 +190,7 @@ namespace KubernetesDebugger.Dialogs
 
             processesGroupBox.Height   = ClientSize.Height - (processesGroupBoxBottomMargin + processesGroupBox.Top);
             processesGrid.Height       = ClientSize.Height - (processesGridBottomMargin + processesGrid.Top);
+            processErrorLabel.Height   = ClientSize.Height - (processErrorLabelBottomMargin + processErrorLabel.Top);
         }
 
         /// <summary>
@@ -232,6 +233,9 @@ namespace KubernetesDebugger.Dialogs
                 await LoadPodsAsync();
                 await LoadContainersAsync();
                 await LoadProcessesAsync();
+
+                SetProcessErrorState();
+                SetAttachButtonEnabledState();
             }
             finally
             {
@@ -258,6 +262,9 @@ namespace KubernetesDebugger.Dialogs
                 await LoadPodsAsync();
                 await LoadContainersAsync();
                 await LoadProcessesAsync();
+
+                SetProcessErrorState();
+                SetAttachButtonEnabledState();
             }
             finally
             {
@@ -285,6 +292,9 @@ namespace KubernetesDebugger.Dialogs
 
                 await LoadContainersAsync();
                 await LoadProcessesAsync();
+
+                SetProcessErrorState();
+                SetAttachButtonEnabledState();
             }
             finally
             {
@@ -316,6 +326,16 @@ namespace KubernetesDebugger.Dialogs
             {
                 ignoreComboBoxEvents = false;
             }
+        }
+
+        /// <summary>
+        /// Handles process grid selection changes.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void processesGrid_SelectionChanged(object sender, EventArgs args)
+        {
+            SetAttachButtonEnabledState();
         }
 
         /// <summary>
@@ -510,6 +530,75 @@ namespace KubernetesDebugger.Dialogs
         }
 
         /// <summary>
+        /// Manages the processes grid and process error label based on the current state of the dialog.
+        /// </summary>
+        private void SetProcessErrorState()
+        {
+            var currentContext   = (string)contextComboBox.SelectedItem;
+            var currentNamespace = (string)namespaceComboBox.SelectedItem;
+            var currentPod       = (string)podComboBox.SelectedItem;
+            var currentContainer = (string)containerComboBox.SelectedItem;
+
+            if (string.IsNullOrEmpty(currentContext))
+            {
+                SetProcessError("No cluster/context is selected.");
+            }
+            else if (string.IsNullOrEmpty(currentNamespace))
+            {
+                SetProcessError("No namespace is selected.");
+            }
+            else if (podComboBox.Items.Count == 0)
+            {
+                SetProcessError($"[{currentNamespace}] namespace has no pods.");
+            }
+            else if (string.IsNullOrEmpty(currentPod))
+            {
+                SetProcessError("No pod is selected.");
+            }
+            else if (string.IsNullOrEmpty(currentPod))
+            {
+                SetProcessError("No container is selected.");
+            }
+            else if (psError != null)
+            {
+                SetProcessError(psError);
+            }
+            else
+            {
+                ClearProcessError();
+            }
+        }
+
+        /// <summary>
+        /// Hides the processes grid and displays the process error label with the message passed.
+        /// </summary>
+        /// <param name="message">Specifies the error message.</param>
+        private void SetProcessError(string message)
+        {
+            processErrorLabel.Text    = message;
+            processErrorLabel.Visible = true;
+            processesGrid.Visible     = false;
+        }
+
+        /// <summary>
+        /// Hides the process error label and displays the processes grid.
+        /// </summary>
+        private void ClearProcessError()
+        {
+            processErrorLabel.Text    = string.Empty;
+            processErrorLabel.Visible = false;
+            processesGrid.Visible     = true;
+        }
+
+        /// <summary>
+        /// Sets the enabled state of the <b>Attach</b> button based on the current state of the dialog.
+        /// </summary>
+        private void SetAttachButtonEnabledState()
+        {
+            attachButton.Enabled = processesGrid.Visible && processesGrid.SelectedRows.Count > 0;
+        }
+
+        /// <summary>
         /// Fetches information about the processes running in the current pod and then 
         /// loads this into the data grid.
         /// </summary>
@@ -522,13 +611,57 @@ namespace KubernetesDebugger.Dialogs
                 return;
             }
 
-            var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
-            var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "/bin/ps");
-
-            // Exec the [/usr/bin/ps -eo pid,cmd,args] command within the current pod container.
+            // Exec the [ps -eo pid,cmd] command within the current pod container.
             // This will result in command output that looks something like:
-            //
             // 
+            //      PID COMMAND
+            //        1 /init
+            //      140 /init
+            //      141 /init
+            //      142 /mnt/wsl/docker-desktop/docker-desktop-user-distro proxy --distro-name neon-kubebuilder --docker-desktop-root /mnt/wsl/docker-desktop C:\Progr
+            //      159 /init
+            //      160 docker serve --address unix:///root/.docker/run/docker-cli-api.sock
+            //      195 /init
+            //      196 /init
+            //      197 -bash
+            //      513 ps -eo pid,args
+
+            var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
+            var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "ps", "-eo", "pid,cmd");
+
+            if (response.ExitCode == 0)
+            {
+                psError = null;
+
+                // Extract the process information from the [ps] command output.
+
+                var processes = new List<ProcessInfo>();
+
+                foreach (var rawLine in response.OutputText
+                    .ToLines()
+                    .Skip(1))
+                {
+                    var line     = rawLine.Trim();
+                    var spacePos = line.IndexOf(' ');
+                    var pid      = int.Parse(line.Substring(0, spacePos));
+                    var command  = line.Substring(spacePos + 1);
+
+                    spacePos = command.IndexOf(' ');
+
+                    var name = spacePos == -1 ? command : command.Substring(0, spacePos);
+
+                    if (name != "ps")
+                    {
+                        processes.Add(new ProcessInfo(pid, name, command));
+                    }
+                }
+
+                processesGrid.DataSource = processes.OrderBy(process => process.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+            }
+            else
+            {
+                psError = "Cannot list container processes because the [ps] command is not on the path.";
+            }
         }
     }
 }

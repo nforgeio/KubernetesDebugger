@@ -27,7 +27,7 @@ using System.Windows.Forms;
 
 using k8s;
 using k8s.Models;
-
+using KubernetesDebugger.Helpers;
 using Neon.Common;
 using Neon.IO;
 using Neon.Tasks;
@@ -45,10 +45,7 @@ namespace KubernetesDebugger
         /// <param name="k8s">Specifies the Kubernetes client.</param>
         /// <param name="pod">Specifies th target pod.</param>
         /// <param name="container">Specifies the name of the target container within the pod.</param>
-        /// <param name="path">
-        /// Specifies the fully qualified path to the executable within the pod
-        /// as well as any arguments.
-        /// </param>
+        /// <param name="path"> Specifies the qualified path to the executable within the target pod container.</param>
         /// <param name="args">Optionally specifies command arguments.</param>
         /// <returns>An <see cref="ExecuteResponse"/>.</returns>
         public static async Task<ExecuteResponse> ExecAsync(IKubernetes k8s, V1Pod pod, string container, string path, params string[] args)
@@ -58,7 +55,6 @@ namespace KubernetesDebugger
             Covenant.Requires<ArgumentNullException>(pod != null, nameof(pod));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(container), nameof(container));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(path), nameof(path));
-            //Covenant.Requires<ArgumentException>(path.StartsWith("/"), nameof(path), "Command path must be fully qualified and start with a \"/\".");
 
             if (!pod.Spec.Containers.Any(c => c.Name == container))
             {
@@ -103,7 +99,7 @@ namespace KubernetesDebugger
                 name:              pod.Metadata.Name, 
                 @namespace:        pod.Metadata.Namespace(), 
                 container:         container, 
-                command:           new string[] { path }, 
+                command:           new string[] { path }.Union(args), 
                 tty:               false,
                 action:            action,
                 cancellationToken: default(CancellationToken));

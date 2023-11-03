@@ -44,6 +44,7 @@
             this.attachButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.processesGroupBox = new System.Windows.Forms.GroupBox();
+            this.processErrorLabel = new System.Windows.Forms.Label();
             this.containerLabel = new System.Windows.Forms.Label();
             this.containerComboBox = new System.Windows.Forms.ComboBox();
             this.instructionsGroupBox.SuspendLayout();
@@ -152,9 +153,11 @@
             this.processesGrid.ShowCellToolTips = false;
             this.processesGrid.Size = new System.Drawing.Size(1053, 404);
             this.processesGrid.TabIndex = 9;
+            this.processesGrid.SelectionChanged += new System.EventHandler(this.processesGrid_SelectionChanged);
             // 
             // Process
             // 
+            this.Process.DataPropertyName = "Name";
             this.Process.HeaderText = "Process";
             this.Process.Name = "Process";
             this.Process.ReadOnly = true;
@@ -162,6 +165,7 @@
             // 
             // ID
             // 
+            this.ID.DataPropertyName = "Pid";
             this.ID.HeaderText = "ID";
             this.ID.Name = "ID";
             this.ID.ReadOnly = true;
@@ -169,6 +173,7 @@
             // 
             // CommandLine
             // 
+            this.CommandLine.DataPropertyName = "Command";
             this.CommandLine.HeaderText = "Command Line";
             this.CommandLine.Name = "CommandLine";
             this.CommandLine.ReadOnly = true;
@@ -196,6 +201,7 @@
             // 
             // processesGroupBox
             // 
+            this.processesGroupBox.Controls.Add(this.processErrorLabel);
             this.processesGroupBox.Controls.Add(this.processesGrid);
             this.processesGroupBox.Location = new System.Drawing.Point(17, 201);
             this.processesGroupBox.Name = "processesGroupBox";
@@ -203,6 +209,16 @@
             this.processesGroupBox.TabIndex = 8;
             this.processesGroupBox.TabStop = false;
             this.processesGroupBox.Text = "Available processes";
+            // 
+            // processErrorLabel
+            // 
+            this.processErrorLabel.Font = new System.Drawing.Font("Microsoft Sans Serif", 9.75F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.processErrorLabel.Location = new System.Drawing.Point(269, 205);
+            this.processErrorLabel.Name = "processErrorLabel";
+            this.processErrorLabel.Size = new System.Drawing.Size(570, 23);
+            this.processErrorLabel.TabIndex = 12;
+            this.processErrorLabel.Text = "Cannot list container processes because the \"ps\" command is not on the path.";
+            this.processErrorLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // containerLabel
             // 
@@ -271,10 +287,11 @@
         private System.Windows.Forms.Button attachButton;
         private System.Windows.Forms.Button cancelButton;
         private System.Windows.Forms.GroupBox processesGroupBox;
+        private System.Windows.Forms.Label containerLabel;
+        private System.Windows.Forms.ComboBox containerComboBox;
+        private System.Windows.Forms.Label processErrorLabel;
         private System.Windows.Forms.DataGridViewTextBoxColumn Process;
         private System.Windows.Forms.DataGridViewTextBoxColumn ID;
         private System.Windows.Forms.DataGridViewTextBoxColumn CommandLine;
-        private System.Windows.Forms.Label containerLabel;
-        private System.Windows.Forms.ComboBox containerComboBox;
     }
 }
