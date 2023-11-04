@@ -47,7 +47,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="AttachKubernetesCommand.cs" />
+    <Compile Include="Commands\AttachKubernetesCommand.cs" />
     <Compile Include="Dialogs\AttachToKubernetesDialog.cs">
       <SubType>Form</SubType>
     </Compile>

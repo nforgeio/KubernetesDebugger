@@ -1,4 +1,4 @@
-﻿namespace KubernetesDebugger.Dialogs
+﻿namespace KubernetesDebugger
 {
     partial class AttachToKubernetesDialog
     {

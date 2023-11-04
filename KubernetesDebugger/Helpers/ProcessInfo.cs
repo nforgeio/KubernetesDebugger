@@ -17,7 +17,7 @@
 
 using System;
 
-namespace KubernetesDebugger.Helpers
+namespace KubernetesDebugger
 {
     /// <summary>
     /// Holds required information about a process.

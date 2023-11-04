@@ -1,4 +1,23 @@
-﻿using System;
+﻿//-----------------------------------------------------------------------------
+// FILE:	    AttachToKubernetesDialog.cs
+// CONTRIBUTOR: Jeff Lill
+// COPYRIGHT:   Copyright (c) 2023 by neonFORGE, LLC.  All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma warning disable VSTHRD100   // Avoid "async void" methods
+
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -16,13 +35,11 @@ using k8s.KubeConfigModels;
 using k8s.Models;
 
 using Neon.Common;
-using KubernetesDebugger.Helpers;
+
 using EnvDTE;
 using System.Diagnostics.Contracts;
 
-#pragma warning disable VSTHRD100   // Avoid "async void" methods
-
-namespace KubernetesDebugger.Dialogs
+namespace KubernetesDebugger
 {
     /// <summary>
     /// Implements the pod/process attachment dialog.
@@ -86,14 +103,19 @@ namespace KubernetesDebugger.Dialogs
         public K8SConfiguration KubeConfig { get; private set; }
 
         /// <summary>
+        /// Set to the selected Kubernetes context name after the user clicks Attach.
+        /// </summary>
+        public string TargetContext { get; private set; }
+
+        /// <summary>
         /// Set to the selected cluster pod after the user clicks Attach.
         /// </summary>
-        public V1Pod CurrentPod { get; private set; }
+        public V1Pod TargetPod { get; private set; }
 
         /// <summary>
         /// Set to the selected cluster container after the user clicks Attach.
         /// </summary>
-        public V1Container CurrentContainer { get; private set; }
+        public V1Container TargetContainer { get; private set; }
 
         /// <summary>
         /// Set to the target process ID after the user clicks attach.
@@ -308,7 +330,7 @@ namespace KubernetesDebugger.Dialogs
             try
             {
                 ignoreComboBoxEvents = true;
-                CurrentPod           = currentPods.FirstOrDefault(pod => pod.Name() == (string)podComboBox.SelectedItem);
+                TargetPod           = currentPods.FirstOrDefault(pod => pod.Name() == (string)podComboBox.SelectedItem);
 
                 await LoadContainersAsync();
                 await LoadProcessesAsync();
@@ -338,7 +360,7 @@ namespace KubernetesDebugger.Dialogs
             try
             {
                 ignoreComboBoxEvents = true;
-                CurrentContainer     = currentContainers.FirstOrDefault(container => container.Name == (string)containerComboBox.SelectedItem);
+                TargetContainer     = currentContainers.FirstOrDefault(container => container.Name == (string)containerComboBox.SelectedItem);
 
                 await LoadProcessesAsync();
             }
@@ -379,7 +401,8 @@ namespace KubernetesDebugger.Dialogs
         /// <param name="args">Specfies the event args.</param>
         private void attachButton_Click(object sender, EventArgs args)
         {
-            Pid = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            Pid            = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            TargetContext = (string)contextComboBox.SelectedItem;
 
             previousContext   = (string)contextComboBox.SelectedItem;
             previousNamespace = (string)namespaceComboBox.SelectedItem;
@@ -517,7 +540,7 @@ namespace KubernetesDebugger.Dialogs
         {
             if (comError)
             {
-                CurrentPod = null;
+                TargetPod = null;
                 Invoke(() => podComboBox.Items.Clear());
                 return;
             }
@@ -533,7 +556,7 @@ namespace KubernetesDebugger.Dialogs
                     currentNamespace = (string)namespaceComboBox.SelectedItem;
                 });
 
-            CurrentPod = null;
+            TargetPod = null;
 
             if (currentContext != null && currentNamespace != null)
             {
@@ -546,9 +569,9 @@ namespace KubernetesDebugger.Dialogs
                     foreach (var pod in currentPods
                         .OrderBy(pod => pod.Name(), StringComparer.CurrentCultureIgnoreCase))
                     {
-                        if (CurrentPod == null)
+                        if (TargetPod == null)
                         {
-                            CurrentPod = pod;
+                            TargetPod = pod;
                         }
 
                         pods.Add(pod.Name());
@@ -556,7 +579,7 @@ namespace KubernetesDebugger.Dialogs
 
                     if (previousPod != null && currentPods.Any(pod => pod.Name() == previousPod))
                     {
-                        CurrentPod = currentPods.Single(pod => pod.Name() == previousPod);
+                        TargetPod = currentPods.Single(pod => pod.Name() == previousPod);
                     }
                 }
                 catch (Exception e)
@@ -597,7 +620,7 @@ namespace KubernetesDebugger.Dialogs
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadContainersAsync()
         {
-            CurrentContainer = null;
+            TargetContainer = null;
 
             if (comError)
             {
@@ -610,21 +633,25 @@ namespace KubernetesDebugger.Dialogs
                 {
                     containerComboBox.Items.Clear();
 
-                    if (CurrentPod != null && CurrentPod.Spec.Containers.Count > 0)
+                    if (TargetPod != null && TargetPod.Spec.Containers.Count > 0)
                     {
-                        currentContainers = CurrentPod.Spec.Containers.ToList();
+                        // We're going to ignore any of our debug ephermeral containers.
+
+                        currentContainers = TargetPod.Spec.Containers
+                            .Where(container => !container.Name.StartsWith("vs-debug-"))
+                            .ToList();
 
                         foreach (var container in currentContainers)
                         {
                             containerComboBox.Items.Add(container.Name);
 
-                            if (CurrentContainer == null)
+                            if (TargetContainer == null)
                             {
-                                CurrentContainer = container;
+                                TargetContainer = container;
                             }
                         }
 
-                        containerComboBox.SelectedItem = CurrentPod.Spec.Containers.First().Name;
+                        containerComboBox.SelectedItem = TargetPod.Spec.Containers.First().Name;
                     }
                     else
                     {
@@ -642,7 +669,7 @@ namespace KubernetesDebugger.Dialogs
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task LoadProcessesAsync()
         {
-            if (CurrentPod == null || CurrentContainer == null || comError)
+            if (TargetPod == null || TargetContainer == null || comError)
             {
                 this.InvokeOnUiThread(() => processesGrid.Rows.Clear());
                 return;
@@ -666,7 +693,7 @@ namespace KubernetesDebugger.Dialogs
             try
             {
                 var k8s      = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: KubeConfig.CurrentContext));
-                var response = await Helper.ExecAsync(k8s, CurrentPod, CurrentContainer.Name, "ps", "-eo", "pid,cmd");
+                var response = await Helper.ExecAsync(k8s, TargetPod, TargetContainer.Name, "ps", "-eo", "pid,cmd");
 
                 if (response.ExitCode == 0)
                 {

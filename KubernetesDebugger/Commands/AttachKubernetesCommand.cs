@@ -15,18 +15,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma warning disable VSTHRD100   // Avoid "async void" methods
+
 using System;
 using System.ComponentModel.Design;
 using System.Globalization;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 
-using KubernetesDebugger.Dialogs;
+using k8s;
+using k8s.KubeConfigModels;
+using k8s.Models;
 
-using Task = System.Threading.Tasks.Task;
+using Neon.Common;
+
+using DialogResult = System.Windows.Forms.DialogResult;
+using Task         = System.Threading.Tasks.Task;
 
 namespace KubernetesDebugger
 {
@@ -99,13 +109,52 @@ namespace KubernetesDebugger
         /// See the constructor to see how the menu item is associated with this function using
         /// OleMenuCommandService service and MenuCommand class.
         /// </summary>
-        /// <param name="sender">Event sender.</param>
-        /// <param name="e">Event args.</param>
-        private void Execute(object sender, EventArgs e)
+        /// <param name="sender">Specifies the sender.</param>
+        /// <param name="args">specifies the arguments.</param>
+        private async void Execute(object sender, EventArgs args)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            try
+            {
+                var dialog = new AttachToKubernetesDialog();
 
-            new AttachToKubernetesDialog().ShowDialog();
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    var kubeConfig         = dialog.KubeConfig;
+                    var k8s                = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: dialog.TargetContext));
+                    var targetPod          = dialog.TargetPod;
+                    var targetContainer    = dialog.TargetContainer;
+                    var debugContainerName = $"vs-debug-{targetContainer.Name}";
+                    var debugContainer     = targetPod.Spec.EphemeralContainers?.SingleOrDefault(container => container.Name == debugContainerName);
+
+                    // Attach an ephemeral debug container to the target container, if one isn't
+                    // already attached.  Note that this container starts a SSHD server.
+
+                    if (debugContainer == null)
+                    {
+                        debugContainer = new V1EphemeralContainer(
+                            name:                debugContainerName,
+                            image:               "ghcr.io/neonkube-stage/vs-debug:latest",
+                            imagePullPolicy:     "IfNotPresent",
+                            targetContainerName: targetContainer.Name);
+
+                        // $todo(jefflill):
+
+                        throw new NotImplementedException();
+
+                        // await k8s.HttpClient.PatchAsync(uri, content);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                VsShellUtilities.ShowMessageBox(
+                    KubernetesDebuggerPackage.Instance,
+                    NeonHelper.ExceptionError(e),
+                    "ERROR",
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+            }
         }
     }
 }
