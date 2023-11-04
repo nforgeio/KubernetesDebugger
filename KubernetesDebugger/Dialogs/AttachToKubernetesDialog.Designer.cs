@@ -38,15 +38,16 @@
             this.instructionsGroupBox = new System.Windows.Forms.GroupBox();
             this.instructionsTextBox = new System.Windows.Forms.TextBox();
             this.processesGrid = new System.Windows.Forms.DataGridView();
+            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.attachButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.processesGroupBox = new System.Windows.Forms.GroupBox();
             this.processErrorLabel = new System.Windows.Forms.Label();
             this.containerLabel = new System.Windows.Forms.Label();
             this.containerComboBox = new System.Windows.Forms.ComboBox();
-            this.Process = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.ID = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.CommandLine = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.traceButton = new System.Windows.Forms.Button();
             this.instructionsGroupBox.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.processesGrid)).BeginInit();
             this.processesGroupBox.SuspendLayout();
@@ -131,9 +132,7 @@
             this.instructionsTextBox.ReadOnly = true;
             this.instructionsTextBox.Size = new System.Drawing.Size(1068, 40);
             this.instructionsTextBox.TabIndex = 0;
-            this.instructionsTextBox.Text = "Use this to attach the debugger to a process running in a remote cluster pod.\\r\\n" +
-    "\\r\\nChoose the target cluster, namespace and pod above, select the target proces" +
-    "s below and then click Attach.";
+            this.instructionsTextBox.Text = resources.GetString("instructionsTextBox.Text");
             // 
             // processesGrid
             // 
@@ -160,22 +159,50 @@
             this.processesGrid.SelectionChanged += new System.EventHandler(this.processesGrid_SelectionChanged);
             this.processesGrid.DoubleClick += new System.EventHandler(this.processesGrid_DoubleClick);
             // 
+            // Process
+            // 
+            this.Process.DataPropertyName = "Name";
+            this.Process.HeaderText = "Process";
+            this.Process.Name = "Process";
+            this.Process.ReadOnly = true;
+            this.Process.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.Process.Width = 150;
+            // 
+            // ID
+            // 
+            this.ID.DataPropertyName = "Pid";
+            this.ID.HeaderText = "ID";
+            this.ID.Name = "ID";
+            this.ID.ReadOnly = true;
+            this.ID.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.ID.Width = 75;
+            // 
+            // CommandLine
+            // 
+            this.CommandLine.DataPropertyName = "Command";
+            this.CommandLine.HeaderText = "Command Line";
+            this.CommandLine.Name = "CommandLine";
+            this.CommandLine.ReadOnly = true;
+            this.CommandLine.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
+            this.CommandLine.Width = 1000;
+            // 
             // attachButton
             // 
             this.attachButton.Location = new System.Drawing.Point(862, 658);
             this.attachButton.Name = "attachButton";
             this.attachButton.Size = new System.Drawing.Size(117, 23);
-            this.attachButton.TabIndex = 10;
+            this.attachButton.TabIndex = 11;
             this.attachButton.Text = "Attach";
             this.attachButton.UseVisualStyleBackColor = true;
             this.attachButton.Click += new System.EventHandler(this.attachButton_Click);
             // 
             // cancelButton
             // 
+            this.cancelButton.DialogResult = System.Windows.Forms.DialogResult.Cancel;
             this.cancelButton.Location = new System.Drawing.Point(985, 658);
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.Size = new System.Drawing.Size(117, 23);
-            this.cancelButton.TabIndex = 11;
+            this.cancelButton.TabIndex = 12;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.UseVisualStyleBackColor = true;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -221,38 +248,22 @@
             this.containerComboBox.TabIndex = 7;
             this.containerComboBox.SelectedValueChanged += new System.EventHandler(this.containerComboBox_SelectedValueChanged);
             // 
-            // Process
+            // traceButton
             // 
-            this.Process.DataPropertyName = "Name";
-            this.Process.HeaderText = "Process";
-            this.Process.Name = "Process";
-            this.Process.ReadOnly = true;
-            this.Process.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
-            this.Process.Width = 150;
-            // 
-            // ID
-            // 
-            this.ID.DataPropertyName = "Pid";
-            this.ID.HeaderText = "ID";
-            this.ID.Name = "ID";
-            this.ID.ReadOnly = true;
-            this.ID.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
-            this.ID.Width = 75;
-            // 
-            // CommandLine
-            // 
-            this.CommandLine.DataPropertyName = "Command";
-            this.CommandLine.HeaderText = "Command Line";
-            this.CommandLine.Name = "CommandLine";
-            this.CommandLine.ReadOnly = true;
-            this.CommandLine.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.NotSortable;
-            this.CommandLine.Width = 1000;
+            this.traceButton.Location = new System.Drawing.Point(739, 658);
+            this.traceButton.Name = "traceButton";
+            this.traceButton.Size = new System.Drawing.Size(117, 23);
+            this.traceButton.TabIndex = 10;
+            this.traceButton.Text = "Trace";
+            this.traceButton.UseVisualStyleBackColor = true;
+            this.traceButton.Click += new System.EventHandler(this.traceButton_Click);
             // 
             // AttachToKubernetesDialog
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1114, 693);
+            this.Controls.Add(this.traceButton);
             this.Controls.Add(this.containerComboBox);
             this.Controls.Add(this.containerLabel);
             this.Controls.Add(this.cancelButton);
@@ -301,5 +312,6 @@
         private System.Windows.Forms.DataGridViewTextBoxColumn Process;
         private System.Windows.Forms.DataGridViewTextBoxColumn ID;
         private System.Windows.Forms.DataGridViewTextBoxColumn CommandLine;
+        private System.Windows.Forms.Button traceButton;
     }
 }

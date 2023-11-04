@@ -36,9 +36,6 @@ using k8s.Models;
 
 using Neon.Common;
 
-using EnvDTE;
-using System.Diagnostics.Contracts;
-
 namespace KubernetesDebugger
 {
     /// <summary>
@@ -46,6 +43,30 @@ namespace KubernetesDebugger
     /// </summary>
     public partial class AttachToKubernetesDialog : Form
     {
+        //---------------------------------------------------------------------
+        // Local types
+
+        /// <summary>
+        /// Identifies the operation requested by the user.
+        /// </summary>
+        public enum RequestedOperation
+        {
+            /// <summary>
+            /// Don't do anything.
+            /// </summary>
+            Abort,
+
+            /// <summary>
+            /// Attach a debugger to the target.
+            /// </summary>
+            Attach,
+
+            /// <summary>
+            /// Start a diagnostics trace.
+            /// </summary>
+            Trace
+        }
+
         //---------------------------------------------------------------------
         // Static members
 
@@ -98,29 +119,39 @@ namespace KubernetesDebugger
         }
 
         /// <summary>
-        /// Set to the selected Kubernetes configuration after the user clicks Attach.
+        /// Set to the selected Kubernetes configuration.
         /// </summary>
         public K8SConfiguration KubeConfig { get; private set; }
 
         /// <summary>
-        /// Set to the selected Kubernetes context name after the user clicks Attach.
+        /// Set to the selected Kubernetes context name.
         /// </summary>
         public string TargetContext { get; private set; }
 
         /// <summary>
-        /// Set to the selected cluster pod after the user clicks Attach.
+        /// Set to the selected cluster pod.
         /// </summary>
         public V1Pod TargetPod { get; private set; }
 
         /// <summary>
-        /// Set to the selected cluster container after the user clicks Attach.
+        /// Set to the selected cluster container.
         /// </summary>
         public V1Container TargetContainer { get; private set; }
 
         /// <summary>
-        /// Set to the target process ID after the user clicks attach.
+        /// Set to the name to be used for the debug ephemeral container.
+        /// </summary>
+        public string DebugContainerName { get; private set; }
+
+        /// <summary>
+        /// Set to the target process ID.
         /// </summary>
         public int Pid { get; private set; }
+
+        /// <summary>
+        /// Set to the operation requested by the user.
+        /// </summary>
+        public RequestedOperation Operation { get; private set; }
 
         /// <summary>
         /// Handles initial form loading.
@@ -395,19 +426,39 @@ namespace KubernetesDebugger
         }
 
         /// <summary>
-        /// Handles attach button clicks.
+        /// Handles SHELL button clicks.
+        /// </summary>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
+        private void traceButton_Click(object sender, EventArgs args)
+        {
+            Pid                = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            TargetContext      = (string)contextComboBox.SelectedItem;
+            DebugContainerName = $"vs-debug-{TargetContainer.Name}";
+
+            previousContext    = (string)contextComboBox.SelectedItem;
+            previousNamespace  = (string)namespaceComboBox.SelectedItem;
+
+            Operation          = RequestedOperation.Trace;
+            DialogResult       = DialogResult.OK;
+        }
+
+        /// <summary>
+        /// Handles ATTACH button clicks.
         /// </summary>
         /// <param name="sender">Specifies the event source.</param>
         /// <param name="args">Specfies the event args.</param>
         private void attachButton_Click(object sender, EventArgs args)
         {
-            Pid            = (int)processesGrid.SelectedRows[0].Cells[0].Value;
-            TargetContext = (string)contextComboBox.SelectedItem;
+            Pid                = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            TargetContext      = (string)contextComboBox.SelectedItem;
+            DebugContainerName = $"vs-debug-{TargetContainer.Name}";
 
-            previousContext   = (string)contextComboBox.SelectedItem;
-            previousNamespace = (string)namespaceComboBox.SelectedItem;
+            previousContext    = (string)contextComboBox.SelectedItem;
+            previousNamespace  = (string)namespaceComboBox.SelectedItem;
 
-            DialogResult = DialogResult.OK;
+            Operation          = RequestedOperation.Attach;
+            DialogResult       = DialogResult.OK;
         }
 
         /// <summary>
@@ -421,6 +472,7 @@ namespace KubernetesDebugger
             previousNamespace = (string)namespaceComboBox.SelectedItem;
 
             DialogResult = DialogResult.Cancel;
+            Operation    = RequestedOperation.Abort;
         }
 
         /// <summary>
@@ -638,7 +690,7 @@ namespace KubernetesDebugger
                         // We're going to ignore any of our debug ephermeral containers.
 
                         currentContainers = TargetPod.Spec.Containers
-                            .Where(container => !container.Name.StartsWith("vs-debug-"))
+                            .Where(container => !container.Name.StartsWith("vs-debug."))
                             .ToList();
 
                         foreach (var container in currentContainers)
@@ -789,9 +841,9 @@ namespace KubernetesDebugger
             this.InvokeOnUiThread(
                 () =>
                 {
-                    processErrorLabel.Text = message;
+                    processErrorLabel.Text    = message;
                     processErrorLabel.Visible = true;
-                    processesGrid.Visible = false;
+                    processesGrid.Visible     = false;
                 });
         }
 
@@ -830,7 +882,8 @@ namespace KubernetesDebugger
         {
             this.EnsureOnUiThread();
 
-            attachButton.Enabled = processesGrid.Visible && processesGrid.SelectedRows.Count > 0;
+            attachButton.Enabled =
+            traceButton.Enabled  = processesGrid.Visible && processesGrid.SelectedRows.Count > 0;
         }
     }
 }

@@ -19,6 +19,7 @@
 
 using System;
 using System.ComponentModel.Design;
+using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
@@ -109,10 +110,14 @@ namespace KubernetesDebugger
         /// See the constructor to see how the menu item is associated with this function using
         /// OleMenuCommandService service and MenuCommand class.
         /// </summary>
-        /// <param name="sender">Specifies the sender.</param>
-        /// <param name="args">specifies the arguments.</param>
+        /// <param name="sender">Specifies the event source.</param>
+        /// <param name="args">Specfies the event args.</param>
         private async void Execute(object sender, EventArgs args)
         {
+            // $todo(jefflill): Add SHELL button to dialog. 
+            //
+            // neon exec -it -n=neon-system neon-cluster-operator-2p22s -c vs-debug.neon-cluster-operator -- /bin/bash
+
             try
             {
                 var dialog = new AttachToKubernetesDialog();
@@ -123,25 +128,24 @@ namespace KubernetesDebugger
                     var k8s                = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: dialog.TargetContext));
                     var targetPod          = dialog.TargetPod;
                     var targetContainer    = dialog.TargetContainer;
-                    var debugContainerName = $"vs-debug-{targetContainer.Name}";
-                    var debugContainer     = targetPod.Spec.EphemeralContainers?.SingleOrDefault(container => container.Name == debugContainerName);
+                    var debugContainerName = dialog.DebugContainerName;
 
-                    // Attach an ephemeral debug container to the target container, if one isn't
-                    // already attached.  Note that this container starts a SSHD server.
-
-                    if (debugContainer == null)
+                    switch (dialog.Operation)
                     {
-                        debugContainer = new V1EphemeralContainer(
-                            name:                debugContainerName,
-                            image:               "ghcr.io/neonkube-stage/vs-debug:latest",
-                            imagePullPolicy:     "IfNotPresent",
-                            targetContainerName: targetContainer.Name);
+                        case AttachToKubernetesDialog.RequestedOperation.Attach:
 
-                        // $todo(jefflill):
+                            await AttachDebugContainerAsync(k8s, targetPod, targetContainer, debugContainerName);
+                            break;
 
-                        throw new NotImplementedException();
+                        case AttachToKubernetesDialog.RequestedOperation.Trace:
 
-                        // await k8s.HttpClient.PatchAsync(uri, content);
+                            // $todo(jefflill): Implement this.
+
+                            throw new NotImplementedException();
+
+                        default:
+
+                            throw new NotImplementedException();
                     }
                 }
             }
@@ -154,6 +158,107 @@ namespace KubernetesDebugger
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
                     OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+            }
+        }
+
+        /// <summary>
+        /// Attaches a new ephemeral debug container to the target container in the target pod if an ephemeral
+        /// container is not already attached and then waits for the debug container to report being ready since
+        /// it may take some time to load the debug container image and start it.
+        /// </summary>
+        /// <param name="k8s">Specifies the cluster Kubernetes client.</param>
+        /// <param name="targetPod">Specifies the target pod.</param>
+        /// <param name="targetContainer">Specifies the target container whose process namespace will be shared.</param>
+        /// <param name="debugContainerName">Specifies the name for the ephemeral debug container.</param>
+        /// <param name="timeout">Optionally specifies the maximum time to wait for the debug cointainer (defaults to 120 seconds).</param>
+        /// <returns>The tracking <see cref="Task"/>.</returns>
+        /// <exception cref="TimeoutException">Thrown when the debug container didn't start in time.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when a terminated debug container with the same name is already attached to the pod.</exception>
+        private async Task AttachDebugContainerAsync(Kubernetes k8s, V1Pod targetPod, V1Container targetContainer, string debugContainerName, TimeSpan timeout = default)
+        {
+            Covenant.Requires<ArgumentNullException>(k8s != null, nameof(k8s));
+            Covenant.Requires<ArgumentNullException>(targetPod != null, nameof(targetPod));
+            Covenant.Requires<ArgumentNullException>(targetContainer != null, nameof(targetContainer));
+            Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(debugContainerName), nameof(debugContainerName));
+
+            if (timeout == default(TimeSpan))
+            {
+                timeout = TimeSpan.FromSeconds(120);
+            }
+
+            var debugContainer = targetPod.Spec.EphemeralContainers?.SingleOrDefault(container => container.Name == debugContainerName);
+
+            // Attach an ephemeral debug container to the target container, if one isn't
+            // already attached.  Note that this container starts a SSHD server.
+
+            if (debugContainer == null)
+            {
+                var patchUri  = new Uri(k8s.BaseUri, $"api/v1/namespaces/{targetPod.Namespace()}/pods/{targetPod.Name()}/ephemeralcontainers");
+                var patchJson =
+$@"
+{{
+    ""spec"":
+    {{
+        ""ephemeralContainers"":
+        [
+            {{
+                ""name"": ""{debugContainerName}"",
+                ""image"": ""ghcr.io/neonkube-stage/vs-debug:latest"",
+                ""targetContainerName"": ""{targetContainer.Name}"",
+                ""stdin"": false,
+                ""tty"": false
+            }}
+        ]
+    }}
+}}
+";
+                var patchContent = new StringContent(patchJson, Encoding.UTF8, "application/strategic-merge-patch+json");
+
+                await k8s.HttpClient.PatchSafeAsync(patchUri, patchContent);
+            }
+
+            // Wait for the new debug container to report being ready.
+
+            try
+            {
+                await NeonHelper.WaitForAsync(
+                    async () =>
+                    {
+                        targetPod = await k8s.CoreV1.ReadNamespacedPodAsync(targetPod.Name(), targetPod.Namespace());
+
+                        if (targetPod.Status.EphemeralContainerStatuses == null || targetPod.Status.EphemeralContainerStatuses.Count == 0)
+                        {
+                            return false;
+                        }
+
+                        var debugContainerStatus = targetPod.Status.EphemeralContainerStatuses.FirstOrDefault(status => status.Name == debugContainerName);
+
+                        if (debugContainerStatus == null)
+                        {
+                            return false;
+                        }
+
+                        if (debugContainerStatus.State.Terminated != null)
+                        {
+                            // $todo(jefflill):
+                            //
+                            // I think we could relax this constraint by attaching another ephemeral container with
+                            // a different name like "vs-debug.1.target", "vs-debug.2.target",...
+                            //
+                            // I'm not sure whether this wild be very useful though, since the user currently has to
+                            // manually terminate the debug container by stopping the SSHD server running there.
+
+                            throw new InvalidOperationException($"A terminated debug container named [{debugContainerName}] is already attached to pod [{targetPod.Namespace()}/{targetPod.Name()}].  You'll need to restart the pod to debug it.");
+                        }
+
+                        return debugContainerStatus.State.Running != null;
+                    },
+                    timeout:      timeout,
+                    pollInterval: TimeSpan.FromSeconds(1));
+            }
+            catch (TimeoutException)
+            {
+                throw new TimeoutException($"Debug container [{debugContainerName}] attached to pod [{targetPod.Namespace()}/{targetPod.Name()}] did not start within [{timeout}].");
             }
         }
     }

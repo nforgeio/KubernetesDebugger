@@ -117,6 +117,9 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="instructionsTextBox.Text" xml:space="preserve">
+    <value>Use this to attach the debugger to a process running in a remote cluster pod.\r\n\r\nChoose the target cluster, namespace and pod above, select the target process below and then click the Attach or Shell button.</value>
+  </data>
   <metadata name="Process.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
