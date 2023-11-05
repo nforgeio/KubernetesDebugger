@@ -21,6 +21,7 @@ using System;
 using System.ComponentModel.Design;
 using System.Diagnostics.Contracts;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -30,11 +31,16 @@ using System.Threading.Tasks;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 
+using EnvDTE80;
+
 using k8s;
-using k8s.KubeConfigModels;
 using k8s.Models;
 
 using Neon.Common;
+using Neon.IO;
+using Neon.Net;
+
+using Newtonsoft.Json.Linq;
 
 using DialogResult = System.Windows.Forms.DialogResult;
 using Task         = System.Threading.Tasks.Task;
@@ -42,7 +48,7 @@ using Task         = System.Threading.Tasks.Task;
 namespace KubernetesDebugger
 {
     /// <summary>
-    /// Command handler
+    /// Implements the <b>Attach Kubernetes</b> command handler.
     /// </summary>
     internal sealed class AttachKubernetesCommand
     {
@@ -57,6 +63,11 @@ namespace KubernetesDebugger
         public static readonly Guid CommandSet = new Guid("417f9fa6-cc1f-47ed-96ee-d42a8f5dbb95");
 
         /// <summary>
+        /// Provides access to Visual Studio commands, etc.
+        /// </summary>
+        private readonly DTE2 dte;
+
+        /// <summary>
         /// VS Package that provides this command, not null.
         /// </summary>
         private readonly AsyncPackage package;
@@ -69,6 +80,7 @@ namespace KubernetesDebugger
         /// <param name="commandService">Command service to add command to, not null.</param>
         private AttachKubernetesCommand(AsyncPackage package, OleMenuCommandService commandService)
         {
+            this.dte     = (DTE2)Package.GetGlobalService(typeof(SDTE));
             this.package = package ?? throw new ArgumentNullException(nameof(package));
 
             commandService = commandService ?? throw new ArgumentNullException(nameof(commandService));
@@ -128,13 +140,14 @@ namespace KubernetesDebugger
                     var k8s                = new Kubernetes(KubernetesClientConfiguration.BuildConfigFromConfigFile(currentContext: dialog.TargetContext));
                     var targetPod          = dialog.TargetPod;
                     var targetContainer    = dialog.TargetContainer;
+                    var targetProcessId    = dialog.TargetProcessId;
                     var debugContainerName = dialog.DebugContainerName;
 
                     switch (dialog.Operation)
                     {
                         case AttachToKubernetesDialog.RequestedOperation.Attach:
 
-                            await AttachDebugContainerAsync(k8s, targetPod, targetContainer, debugContainerName);
+                            await AttachDebugContainerAsync(k8s, targetPod, targetContainer, targetProcessId, debugContainerName);
                             break;
 
                         case AttachToKubernetesDialog.RequestedOperation.Trace:
@@ -169,12 +182,13 @@ namespace KubernetesDebugger
         /// <param name="k8s">Specifies the cluster Kubernetes client.</param>
         /// <param name="targetPod">Specifies the target pod.</param>
         /// <param name="targetContainer">Specifies the target container whose process namespace will be shared.</param>
+        /// <param name="targetProcessId">Specifies the ID of the target process in the target container.</param>
         /// <param name="debugContainerName">Specifies the name for the ephemeral debug container.</param>
         /// <param name="timeout">Optionally specifies the maximum time to wait for the debug cointainer (defaults to 120 seconds).</param>
         /// <returns>The tracking <see cref="Task"/>.</returns>
         /// <exception cref="TimeoutException">Thrown when the debug container didn't start in time.</exception>
         /// <exception cref="InvalidOperationException">Thrown when a terminated debug container with the same name is already attached to the pod.</exception>
-        private async Task AttachDebugContainerAsync(Kubernetes k8s, V1Pod targetPod, V1Container targetContainer, string debugContainerName, TimeSpan timeout = default)
+        private async Task AttachDebugContainerAsync(Kubernetes k8s, V1Pod targetPod, V1Container targetContainer, int targetProcessId, string debugContainerName, TimeSpan timeout = default)
         {
             Covenant.Requires<ArgumentNullException>(k8s != null, nameof(k8s));
             Covenant.Requires<ArgumentNullException>(targetPod != null, nameof(targetPod));
@@ -193,7 +207,6 @@ namespace KubernetesDebugger
 
             if (debugContainer == null)
             {
-                var patchUri  = new Uri(k8s.BaseUri, $"api/v1/namespaces/{targetPod.Namespace()}/pods/{targetPod.Name()}/ephemeralcontainers");
                 var patchJson =
 $@"
 {{
@@ -214,7 +227,7 @@ $@"
 ";
                 var patchContent = new StringContent(patchJson, Encoding.UTF8, "application/strategic-merge-patch+json");
 
-                await k8s.HttpClient.PatchSafeAsync(patchUri, patchContent);
+                await k8s.PatchSafeAsync(new Uri($"api/v1/namespaces/{targetPod.Namespace()}/pods/{targetPod.Name()}/ephemeralcontainers", UriKind.Relative), patchContent);
             }
 
             // Wait for the new debug container to report being ready.
@@ -260,6 +273,94 @@ $@"
             {
                 throw new TimeoutException($"Debug container [{debugContainerName}] attached to pod [{targetPod.Namespace()}/{targetPod.Name()}] did not start within [{timeout}].");
             }
+
+            // Start a port forwarder for the debugger SSH connection to the pod and then spin up the debugger.
+
+            var portForwarder = (PortForwarder)null;
+
+            try
+            {
+                // Establish network proxy between a local loopback ephemeral port and the SSHD server
+                // running in the new ephemeral container.
+
+                portForwarder = await PortForwarder.StartAsync(k8s, targetPod.Name(), targetPod.Namespace(), NetworkPorts.SSH, PortForwarder.ConnectionMode.Single);
+
+                // Generate a temporary [launch.json] file and launch the VS debugger.
+
+                using (var tempFile = await CreateLaunchSettingsAsync(portForwarder, targetProcessId))
+                {
+                    try
+                    {
+                        dte.ExecuteCommand("DebugAdapterHost.Launch", $"/LaunchJson:\"{tempFile.Path}\"");
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine(exception);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                VsShellUtilities.ShowMessageBox(
+                    KubernetesDebuggerPackage.Instance,
+                    NeonHelper.ExceptionError(e),
+                    "ERROR",
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+            }
+            finally
+            {
+                portForwarder?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Creates the temporary launch settings file we'll use for starting <b>vsdbg</b> on
+        /// the Raspberry for this command.
+        /// </summary>
+        /// <param name="portForwarder">Specifies the port forwarder being used.</param>
+        /// <param name="targetProcessId">Specifies the ID of the target process in the target container.</param>
+        /// <returns>The <see cref="TempFile"/> referencing the created launch file.</returns>
+        private async Task<TempFile> CreateLaunchSettingsAsync(PortForwarder portForwarder, int targetProcessId)
+        {
+            Covenant.Requires<ArgumentNullException>(portForwarder != null, nameof(portForwarder));
+
+            // Here's information about how this works:
+            //
+            //      https://github.com/Microsoft/MIEngine/wiki/Offroad-Debugging-of-.NET-Core-on-Linux---OSX-from-Visual-Studio
+            //      https://github.com/Microsoft/MIEngine/wiki/Offroad-Debugging-of-.NET-Core-on-Linux---OSX-from-Visual-Studio#attaching
+
+            var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
+            var settings =
+                new JObject
+                (
+                    new JProperty("version", "0.2.1"),
+                    new JProperty("adapter", Path.Combine(systemRoot, "System32", "OpenSSH", "ssh.exe")),
+                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@{portForwarder.LocalEndpoint.Address}:{portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode"),
+                    new JProperty("configurations",
+                        new JArray
+                        (
+                            new JObject
+                            (
+                                new JProperty("name", "Debug on Kubernetes"),
+                                new JProperty("type", "coreclr"),
+                                new JProperty("request", "attach"),
+                                new JProperty("processId", targetProcessId)
+                            )
+                        )
+                    )
+                );
+
+            var tempFile = new TempFile(".launch.json");
+
+            using (var stream = new FileStream(tempFile.Path, FileMode.CreateNew, FileAccess.ReadWrite))
+            {
+                await stream.WriteAsync(Encoding.UTF8.GetBytes(settings.ToString()));
+            }
+
+            return tempFile;
         }
     }
 }

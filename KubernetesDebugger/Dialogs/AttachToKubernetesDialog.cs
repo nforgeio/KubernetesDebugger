@@ -139,14 +139,14 @@ namespace KubernetesDebugger
         public V1Container TargetContainer { get; private set; }
 
         /// <summary>
+        /// Set to the selected target process ID.
+        /// </summary>
+        public int TargetProcessId { get; private set; }
+
+        /// <summary>
         /// Set to the name to be used for the debug ephemeral container.
         /// </summary>
         public string DebugContainerName { get; private set; }
-
-        /// <summary>
-        /// Set to the target process ID.
-        /// </summary>
-        public int Pid { get; private set; }
 
         /// <summary>
         /// Set to the operation requested by the user.
@@ -432,7 +432,7 @@ namespace KubernetesDebugger
         /// <param name="args">Specfies the event args.</param>
         private void traceButton_Click(object sender, EventArgs args)
         {
-            Pid                = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            TargetProcessId    = (int)processesGrid.SelectedRows[0].Cells[0].Value;
             TargetContext      = (string)contextComboBox.SelectedItem;
             DebugContainerName = $"vs-debug-{TargetContainer.Name}";
 
@@ -450,7 +450,7 @@ namespace KubernetesDebugger
         /// <param name="args">Specfies the event args.</param>
         private void attachButton_Click(object sender, EventArgs args)
         {
-            Pid                = (int)processesGrid.SelectedRows[0].Cells[0].Value;
+            TargetProcessId    = (int)processesGrid.SelectedRows[0].Cells[0].Value;
             TargetContext      = (string)contextComboBox.SelectedItem;
             DebugContainerName = $"vs-debug-{TargetContainer.Name}";
 
