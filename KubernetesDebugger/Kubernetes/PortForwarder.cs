@@ -79,6 +79,10 @@ namespace KubernetesDebugger
             /// <param name="demuxer">Specifies the websocket demuxer.</param>
             public Connection(Socket localSocket, WebSocket webSocket, StreamDemuxer demuxer)
             {
+                Covenant.Requires<ArgumentNullException>(localSocket != null, nameof(localSocket));
+                Covenant.Requires<ArgumentNullException>(webSocket != null, nameof(webSocket));
+                Covenant.Requires<ArgumentNullException>(demuxer != null, nameof(demuxer));
+
                 this.LocalSocket  = localSocket;
                 this.WebSocket    = webSocket;
                 this.Demuxer      = demuxer;
@@ -159,15 +163,19 @@ namespace KubernetesDebugger
         /// <returns></returns>
         public static async Task<PortForwarder> StartAsync(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode = ConnectionMode.Normal, int localPort = 0)
         {
+Log.Info("PortForwarder.StartAsync: ENTER");
             Covenant.Requires<ArgumentNullException>(k8s != null, nameof(k8s));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(name), nameof(name));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(@namespace), nameof(@namespace));
 
             // Create a temporary websocket to ensure that the pod exists and is ready for connections.
 
-            using var webSocket = await k8s.WebSocketNamespacedPodPortForwardAsync(name, @namespace, new int[] { podPort }, WebSocketProtocol.ChannelWebSocketProtocol);
+Log.Info("PortForwarder.StartAsync: 1");
+            using var webSocket = await k8s.WebSocketNamespacedPodPortForwardAsync(name, @namespace, new int[] { podPort });
+Log.Info("PortForwarder.StartAsync: 2");
 
-            return await Task.FromResult(new PortForwarder(k8s, name, @namespace, podPort, mode, localPort));
+Log.Info("PortForwarder.StartAsync: EXIT");
+            return new PortForwarder(k8s, name, @namespace, podPort, mode, localPort);
         }
 
         //---------------------------------------------------------------------
@@ -194,6 +202,7 @@ namespace KubernetesDebugger
         /// <param name="localPort">Specifies the local port or 0 to choose an unused ephemeral port.</param>
         internal PortForwarder(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode, int localPort)
         {
+Log.Info("PortForwarder.Constructor: ENTER");
             this.k8s          = k8s;
             this.podName      = name;
             this.podNamespace = @namespace;
@@ -201,17 +210,22 @@ namespace KubernetesDebugger
             this.PodPort      = podPort;
             this.listener     = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
+Log.Info("PortForwarder.Constructor: 1");
             listener.Bind(new IPEndPoint(IPAddress.Loopback, localPort));
+Log.Info("PortForwarder.Constructor: 2");
             listener.Listen(100);
+Log.Info("PortForwarder.Constructor: 3");
 
             this.LocalEndpoint = (IPEndPoint)listener.LocalEndPoint;
 
             _ = ListenAsync();
+Log.Info("PortForwarder.Constructor: EXIT");
         }
 
         /// <inheritdoc/>
         public void Dispose()
         {
+Log.Info("PortForwarder.Dispose: ENTER");
             lock (syncLock)
             {
                 if (!isDisposed)
@@ -232,10 +246,10 @@ namespace KubernetesDebugger
                     }
 
                     cts.Cancel();
-
                     GC.SuppressFinalize(this);
                 }
             }
+Log.Info("PortForwarder.Dispose: EXIT");
         }
 
         /// <summary>
@@ -255,6 +269,7 @@ namespace KubernetesDebugger
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task ListenAsync()
         {
+Log.Info("PortForwarder.ListenAsync: ENTER");
             // We're going to spin up a proxy for every connection to the local
             // listening socket and let that run as an independent task until the
             // connection is closed.
@@ -264,31 +279,39 @@ namespace KubernetesDebugger
 
             try
             {
+Log.Info("PortForwarder.ListenAsync: 1");
                 while (!isDisposed)
                 {
                     _ = ProxyAsync(await listener.AcceptAsync());
+Log.Info("PortForwarder.ListenAsync: ACCEPT");
 
                     if (mode == ConnectionMode.Single)
                     {
+Log.Info("PortForwarder.ListenAsync: 3");
                         break;
                     }
                 }
 
-                // Stop listening on the local port and then wait for the CTS 
-                // to be cancelled.
+                // Stop listening on the local port and then wait forever
+                // for the CTS to be cancelled.
 
+Log.Info("PortForwarder.ListenAsync: 4");
                 lock (syncLock)
                 {
                     listener.Dispose();
                     listener = null;
                 }
 
+Log.Info("PortForwarder.ListenAsync: 5");
                 await Task.Delay(-1, cts.Token);
+Log.Info("PortForwarder.ListenAsync: 6");
             }
             catch
             {
+Log.Info("PortForwarder.ListenAsync: ERROR");
                 // Intentionally ignoring errors.
             }
+Log.Info("PortForwarder.ListenAsync: EXIT");
         }
 
         /// <summary>
@@ -297,10 +320,13 @@ namespace KubernetesDebugger
         /// <param name="connection">Specifies the connection to be added.</param>
         private void AddConnection(Connection connection)
         {
+Log.Info("PortForwarder.AddConnection: ENTER");
             lock (syncLock)
             {
+Log.Info("PortForwarder.AddConnection: 1");
                 connections.Add(connection.Id, connection);
             }
+Log.Info("PortForwarder.AddConnection: EXIT");
         }
 
         /// <summary>
@@ -309,10 +335,13 @@ namespace KubernetesDebugger
         /// <param name="connection">Specifies the connection to be removed.</param>
         private void RemoveConnection(Connection connection)
         {
+Log.Info("PortForwarder.RemoveConnection: ENTER");
             lock (syncLock)
             {
+Log.Info("PortForwarder.RemoveConnection: 1");
                 connections.Remove(connection.Id);
             }
+Log.Info("PortForwarder.RemoveConnection: EXIT");
         }
 
         /// <summary>
@@ -322,11 +351,13 @@ namespace KubernetesDebugger
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task ProxyAsync(Socket localSocket)
         {
-            var webSocket  = await k8s.WebSocketNamespacedPodPortForwardAsync(podName, podNamespace, new int[] { PodPort }, WebSocketProtocol.ChannelWebSocketProtocol);
+Log.Info("ProxyAsync: ENTER");
+            var webSocket  = await k8s.WebSocketNamespacedPodPortForwardAsync(podName, podNamespace, new int[] { PodPort });
             var demuxer    = new StreamDemuxer(webSocket, StreamType.PortForward);
             var connection = new Connection(localSocket, webSocket, demuxer);
 
             AddConnection(connection);
+Log.Info("ProxyAsync: 1");
 
             try
             {
@@ -337,16 +368,25 @@ namespace KubernetesDebugger
                 };
 
                 await Task.WhenAll(tasks);
+Log.Info("ProxyAsync: 2");
             }
             catch
             {
+Log.Info("ProxyAsync: ERROR");
                 // Intentionally ignoring errors.
             }
             finally
             {
+Log.Info("ProxyAsync: FINALLY");
                 RemoveConnection(connection);
                 connection.Dispose();
+
+                if (mode == ConnectionMode.Single)
+                {
+                    this.Dispose();
+                }
             }
+Log.Info("ProxyAsync: EXIT");
         }
 
         /// <summary>
@@ -356,6 +396,7 @@ namespace KubernetesDebugger
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task SendLoopAsync(Connection connection)
         {
+Log.Info("SendLoopAsync: ENTER");
             var localSocket = connection.LocalSocket;
             var buffer      = new byte[BufferSize];
 
@@ -364,19 +405,25 @@ namespace KubernetesDebugger
                 while (true)
                 {
                     var cbRead = await localSocket.ReceiveAsync(new ArraySegment<byte>(buffer, 0, BufferSize), SocketFlags.None);
+Log.Info($"SendLoopAsync: RECEIVE {cbRead} bytes");
 
                     if (cbRead == 0)
                     {
-                        return; // EOF
+Log.Info("SendLoopAsync: EOF");
+                        return; // EOF: local socket has closed
                     }
 
+Log.Info($"SendLoopAsync: SEND {cbRead} bytes");
                     await connection.RemoteStream.WriteAsync(buffer, 0, cbRead);
+Log.Info($"SendLoopAsync: SENT {cbRead} bytes");
                 }
             }
             catch
             {
+Log.Info("SendLoopAsync: ERROR");
                 // Intentionally ignoring errors.
             }
+Log.Info("SendLoopAsync: EXIT");
         }
 
         /// <summary>
@@ -386,6 +433,7 @@ namespace KubernetesDebugger
         /// <returns>The tracking <see cref="Task"/>.</returns>
         private async Task ReceiveLoopAsync(Connection connection)
         {
+Log.Info("ReceiveLoopAsync: ENTER");
             var buffer = new byte[BufferSize];
 
             try
@@ -395,16 +443,21 @@ namespace KubernetesDebugger
                     var cbRead      = await connection.RemoteStream.ReadAsync(buffer,0, BufferSize);
                     var cbRemaining = cbRead;
 
+Log.Info($"ReceiveLoopAsync: RECEIVE {cbRead} bytes");
                     while (cbRemaining > 0)
                     {
+Log.Info($"ReceiveLoopAsync: SEND {cbRemaining} remaining bytes");
                         cbRemaining -= await connection.LocalSocket.SendAsync(new ArraySegment<byte>(buffer, cbRead - cbRemaining, cbRemaining), SocketFlags.None);
+Log.Info($"ReceiveLoopAsync: SENT {cbRemaining} remaining bytes");
                     }
                 }
             }
             catch
             {
+Log.Info("ReceiveLoopAsync: ERROR");
                 // Intentionally ignoring errors.
             }
+Log.Info("ReceiveLoopAsync: EXIT");
         }
     }
 }

@@ -16,10 +16,14 @@
 // limitations under the License.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 
 using Task = System.Threading.Tasks.Task;
 
@@ -47,6 +51,9 @@ namespace KubernetesDebugger
     [ProvideMenuResource("Menus.ctmenu", 1)]
     public sealed class KubernetesDebuggerPackage : AsyncPackage
     {
+        //---------------------------------------------------------------------
+        // Static members
+
         /// <summary>
         /// KubernetesDebuggerPackage GUID string.
         /// </summary>
@@ -57,6 +64,79 @@ namespace KubernetesDebugger
         /// </summary>
         public static KubernetesDebuggerPackage Instance { get; private set; }
 
+        private static IVsOutputWindowPane      _debugPane;
+        private static readonly object          DebugSyncLock = new object();
+        private static readonly Queue<string>   DebugLogQueue = new Queue<string>();
+
+        /// <summary>
+        /// Logs text to the Visual Studio Debug output panel.
+        /// </summary>
+        /// <param name="text">The output text.</param>
+        public static void Log(string text)
+        {
+            //###############################
+            // $debug(jefflill): DELETE THIS!
+
+            using (var logFile = File.AppendText(@"C:\Temp\kubernetesdebugger.log"))
+            {
+                logFile.Write(text);
+            }
+            //###############################
+
+            if (Instance == null || _debugPane == null)
+            {
+                return;     // Logging hasn't been initialized yet.
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                return;     // Nothing to log
+            }
+
+            // We're going to queue log messages in the current thread and 
+            // then execute a fire-and-forget action on the UI thread to
+            // write any queued log lines.  We'll use a lock to protect
+            // the queue.
+            // 
+            // This pattern is nice because it ensures that the log lines
+            // are written in the correct order while ensuring this all
+            // happens on the UI thread in addition to not using a 
+            // [Task.Run(...).Wait()] which would probably result in
+            // background thread exhaustion.
+
+            lock (DebugSyncLock)
+            {
+                DebugLogQueue.Enqueue(text);
+            }
+
+            _ = Instance.JoinableTaskFactory.RunAsync(
+                async () =>
+                {
+                    await Task.Yield();     // Get off of the callers stack
+                    await Instance.JoinableTaskFactory.SwitchToMainThreadAsync(Instance.DisposalToken);
+
+                    lock (DebugSyncLock)
+                    {
+                        if (DebugLogQueue.Count == 0)
+                        {
+                            return;     // Nothing to do
+                        }
+
+                        _debugPane.Activate();
+
+                        // Log any queued messages.
+
+                        while (DebugLogQueue.Count > 0)
+                        {
+                            _ = _debugPane.OutputStringThreadSafe(DebugLogQueue.Dequeue());
+                        }
+                    }
+                });
+        }
+
+        //---------------------------------------------------------------------
+        // Instance members
+
         /// <summary>
         /// Initialization of the package; this method is called right after the package is sited, so this is the place
         /// where you can put all the initialization code that rely on services provided by VisualStudio.
@@ -66,7 +146,21 @@ namespace KubernetesDebugger
         /// <returns>A task representing the async work of package initialization, or an already completed task if there is none. Do not return null from this method.</returns>
         protected override async Task InitializeAsync(CancellationToken cancellationToken, IProgress<ServiceProgressData> progress)
         {
+            // When initialized asynchronously, the current thread may be a background thread at this point.
+            // Do any initialization that requires the UI thread after switching to the UI thread.
+
+            await this.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+            // Basic initialization.
+
             Instance = this;
+
+            // Initialize the log panel.
+
+            var debugWindow     = Package.GetGlobalService(typeof(SVsOutputWindow)) as IVsOutputWindow;
+            var generalPaneGuid = VSConstants.GUID_OutWindowDebugPane;
+
+            debugWindow?.GetPane(ref generalPaneGuid, out _debugPane);
 
             // When initialized asynchronously, the current thread may be a background thread at this point.
             // Do any initialization that requires the UI thread after switching to the UI thread.

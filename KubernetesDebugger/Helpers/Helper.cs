@@ -40,6 +40,11 @@ namespace KubernetesDebugger
     public static class Helper
     {
         /// <summary>
+        /// The name used to prefix logged output and status bar text.
+        /// </summary>
+        public const string LogName = "kubernetes";
+
+        /// <summary>
         /// Executes a command within a pod.
         /// </summary>
         /// <param name="k8s">Specifies the Kubernetes client.</param>

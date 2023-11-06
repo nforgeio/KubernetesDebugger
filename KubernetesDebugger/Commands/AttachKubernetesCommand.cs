@@ -4,7 +4,7 @@
 // COPYRIGHT:   Copyright (c) 2023 by neonFORGE, LLC.  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// you may not use this file except in compliance with the License.Ffile.cop
 // You may obtain a copy of the License at
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
@@ -195,6 +195,7 @@ namespace KubernetesDebugger
             Covenant.Requires<ArgumentNullException>(targetContainer != null, nameof(targetContainer));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(debugContainerName), nameof(debugContainerName));
 
+Log.Info("AttachDebugContainerAsync: ENTER");
             if (timeout == default(TimeSpan))
             {
                 timeout = TimeSpan.FromSeconds(120);
@@ -283,24 +284,48 @@ $@"
                 // Establish network proxy between a local loopback ephemeral port and the SSHD server
                 // running in the new ephemeral container.
 
+Log.Info("------------------------------------------------------------");
+Log.Info("AttachDebugContainerAsync: 1");
                 portForwarder = await PortForwarder.StartAsync(k8s, targetPod.Name(), targetPod.Namespace(), NetworkPorts.SSH, PortForwarder.ConnectionMode.Single);
+Log.Info("AttachDebugContainerAsync: 2");
 
                 // Generate a temporary [launch.json] file and launch the VS debugger.
 
                 using (var tempFile = await CreateLaunchSettingsAsync(portForwarder, targetProcessId))
                 {
+                    //###############################
+                    // $debug(jefflill): DELETE THIS!
+
+                    var tempFilePath = @"C:\Temp\launch.json";
+
+                    if (File.Exists(tempFilePath))
+                    {
+                        File.Delete(tempFilePath);
+                    }
+
+                    File.Copy(tempFile.Path, tempFilePath);
+
+                    //await Task.Delay(-1);
+                    //###############################
+
                     try
                     {
+Log.Info("AttachDebugContainerAsync: 3");
                         dte.ExecuteCommand("DebugAdapterHost.Launch", $"/LaunchJson:\"{tempFile.Path}\"");
+Log.Info("AttachDebugContainerAsync: 4");
                     }
-                    catch (Exception exception)
+                    catch (Exception e)
                     {
-                        Console.WriteLine(exception);
+Log.Error($"AttachDebugContainerAsync: 5 : {NeonHelper.ExceptionError(e)}");
+                        Console.WriteLine(e);
                     }
                 }
             }
             catch (Exception e)
             {
+Log.Info("AttachDebugContainerAsync: 6");
+                portForwarder?.Dispose();
+
                 VsShellUtilities.ShowMessageBox(
                     KubernetesDebuggerPackage.Instance,
                     NeonHelper.ExceptionError(e),
@@ -309,15 +334,12 @@ $@"
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
                     OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
             }
-            finally
-            {
-                portForwarder?.Dispose();
-            }
+Log.Info("AttachDebugContainerAsync: EXIT");
         }
 
         /// <summary>
-        /// Creates the temporary launch settings file we'll use for starting <b>vsdbg</b> on
-        /// the Raspberry for this command.
+        /// Creates the temporary launch settings file we'll use for launching <b>vsdbg</b> in
+        /// the ephemeral container.
         /// </summary>
         /// <param name="portForwarder">Specifies the port forwarder being used.</param>
         /// <param name="targetProcessId">Specifies the ID of the target process in the target container.</param>
@@ -338,13 +360,13 @@ $@"
                 (
                     new JProperty("version", "0.2.1"),
                     new JProperty("adapter", Path.Combine(systemRoot, "System32", "OpenSSH", "ssh.exe")),
-                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@{portForwarder.LocalEndpoint.Address}:{portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode"),
+                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@127.0.0.1 -p {portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode"),
                     new JProperty("configurations",
                         new JArray
                         (
                             new JObject
                             (
-                                new JProperty("name", "Debug on Kubernetes"),
+                                new JProperty("name", $"Attach to process: {targetProcessId}"),
                                 new JProperty("type", "coreclr"),
                                 new JProperty("request", "attach"),
                                 new JProperty("processId", targetProcessId)
@@ -353,7 +375,7 @@ $@"
                     )
                 );
 
-            var tempFile = new TempFile(".launch.json");
+            var tempFile = new TempFile(".launch.json", folder: @"C:\Temp");    // $debug(jefflill): REMOVE THE FOLDER ARG!
 
             using (var stream = new FileStream(tempFile.Path, FileMode.CreateNew, FileAccess.ReadWrite))
             {
