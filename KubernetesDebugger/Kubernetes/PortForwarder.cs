@@ -1,5 +1,5 @@
 ﻿//-----------------------------------------------------------------------------
-// FILE:	    AttachKubernetesCommand.cs
+// FILE:	    PortForwarder.cs
 // CONTRIBUTOR: Jeff Lill
 // COPYRIGHT:   Copyright (c) 2023 by neonFORGE, LLC.  All rights reserved.
 //
@@ -76,17 +76,13 @@ namespace KubernetesDebugger
             /// </summary>
             /// <param name="localSocket">Specifies the local socket.</param>
             /// <param name="webSocket">Specifies the websocket to the remote pod.</param>
-            /// <param name="demuxer">Specifies the websocket demuxer.</param>
-            public Connection(Socket localSocket, WebSocket webSocket, StreamDemuxer demuxer)
+            public Connection(Socket localSocket, WebSocket webSocket)
             {
                 Covenant.Requires<ArgumentNullException>(localSocket != null, nameof(localSocket));
                 Covenant.Requires<ArgumentNullException>(webSocket != null, nameof(webSocket));
-                Covenant.Requires<ArgumentNullException>(demuxer != null, nameof(demuxer));
 
-                this.LocalSocket  = localSocket;
-                this.WebSocket    = webSocket;
-                this.Demuxer      = demuxer;
-                this.RemoteStream = demuxer.GetStream((byte?)0, (byte?)0);
+                this.LocalSocket = localSocket;
+                this.WebSocket   = webSocket;
             }
 
             /// <inheritdoc/>
@@ -98,12 +94,6 @@ namespace KubernetesDebugger
 
                     LocalSocket?.Dispose();
                     LocalSocket = null;
-
-                    RemoteStream?.Dispose();
-                    RemoteStream = null;
-
-                    Demuxer?.Dispose();
-                    Demuxer = null;
 
                     WebSocket?.Dispose();
                     WebSocket = null;
@@ -126,16 +116,6 @@ namespace KubernetesDebugger
             /// Holds the websocket to the remote pod.
             /// </summary>
             public WebSocket WebSocket;
-
-            /// <summary>
-            /// Holds the websocket demuxer.
-            /// </summary>
-            public StreamDemuxer Demuxer;
-
-            /// <summary>
-            /// Holds the stream to the remote pod.
-            /// </summary>
-            public Stream RemoteStream;
         }
 
         //---------------------------------------------------------------------
@@ -232,7 +212,7 @@ Log.Info("PortForwarder.Dispose: ENTER");
                 {
                     isDisposed = true;
 
-                    listener.Dispose();
+                    listener?.Dispose();
                     listener = null;
 
                     lock (connections)
@@ -308,7 +288,7 @@ Log.Info("PortForwarder.ListenAsync: 6");
             }
             catch
             {
-Log.Info("PortForwarder.ListenAsync: ERROR");
+Log.Info("PortForwarder.ListenAsync: ERROR ******");
                 // Intentionally ignoring errors.
             }
 Log.Info("PortForwarder.ListenAsync: EXIT");
@@ -353,8 +333,7 @@ Log.Info("PortForwarder.RemoveConnection: EXIT");
         {
 Log.Info("ProxyAsync: ENTER");
             var webSocket  = await k8s.WebSocketNamespacedPodPortForwardAsync(podName, podNamespace, new int[] { PodPort });
-            var demuxer    = new StreamDemuxer(webSocket, StreamType.PortForward);
-            var connection = new Connection(localSocket, webSocket, demuxer);
+            var connection = new Connection(localSocket, webSocket);
 
             AddConnection(connection);
 Log.Info("ProxyAsync: 1");
@@ -372,7 +351,7 @@ Log.Info("ProxyAsync: 2");
             }
             catch
             {
-Log.Info("ProxyAsync: ERROR");
+Log.Info("ProxyAsync: ERROR ******");
                 // Intentionally ignoring errors.
             }
             finally
@@ -405,7 +384,8 @@ Log.Info("SendLoopAsync: ENTER");
                 while (true)
                 {
                     var cbRead = await localSocket.ReceiveAsync(new ArraySegment<byte>(buffer, 0, BufferSize), SocketFlags.None);
-Log.Info($"SendLoopAsync: RECEIVE {cbRead} bytes");
+Log.Info($"SendLoopAsync: RECEIVE FROM-VS {cbRead} bytes");
+Log.Info($"SendLoopAsync: RECEIVE FROM-VS:\r\n\r\n" + NeonHelper.HexDump(buffer, 0, cbRead, 16, HexDumpOption.ShowAnsi));
 
                     if (cbRead == 0)
                     {
@@ -414,13 +394,12 @@ Log.Info("SendLoopAsync: EOF");
                     }
 
 Log.Info($"SendLoopAsync: SEND {cbRead} bytes");
-                    await connection.RemoteStream.WriteAsync(buffer, 0, cbRead);
-Log.Info($"SendLoopAsync: SENT {cbRead} bytes");
+                    await connection.WebSocket.SendAsync(new ArraySegment<byte>(buffer, 0, cbRead), WebSocketMessageType.Binary, true, cts.Token);
                 }
             }
             catch
             {
-Log.Info("SendLoopAsync: ERROR");
+Log.Info("SendLoopAsync: ERROR ******");
                 // Intentionally ignoring errors.
             }
 Log.Info("SendLoopAsync: EXIT");
@@ -434,27 +413,28 @@ Log.Info("SendLoopAsync: EXIT");
         private async Task ReceiveLoopAsync(Connection connection)
         {
 Log.Info("ReceiveLoopAsync: ENTER");
-            var buffer = new byte[BufferSize];
+            var buffer        = new byte[BufferSize];
+            var receiveBuffer = new ArraySegment<byte>(buffer, 0, BufferSize);
 
             try
             {
                 while (true)
                 {
-                    var cbRead      = await connection.RemoteStream.ReadAsync(buffer,0, BufferSize);
+                    var cbRead      = (await connection.WebSocket.ReceiveAsync(receiveBuffer, cts.Token)).Count;
                     var cbRemaining = cbRead;
 
-Log.Info($"ReceiveLoopAsync: RECEIVE {cbRead} bytes");
+Log.Info($"ReceiveLoopAsync: RECEIVE FROM-POD {cbRead} bytes");
+Log.Info("ReceiveLoopAsync: RECEIVE FROM-POD:\r\n\r\n" + NeonHelper.HexDump(buffer, 0, cbRead, 16, HexDumpOption.ShowAnsi));
                     while (cbRemaining > 0)
                     {
 Log.Info($"ReceiveLoopAsync: SEND {cbRemaining} remaining bytes");
                         cbRemaining -= await connection.LocalSocket.SendAsync(new ArraySegment<byte>(buffer, cbRead - cbRemaining, cbRemaining), SocketFlags.None);
-Log.Info($"ReceiveLoopAsync: SENT {cbRemaining} remaining bytes");
                     }
                 }
             }
             catch
             {
-Log.Info("ReceiveLoopAsync: ERROR");
+Log.Info("ReceiveLoopAsync: ERROR ******");
                 // Intentionally ignoring errors.
             }
 Log.Info("ReceiveLoopAsync: EXIT");
