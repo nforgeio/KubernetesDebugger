@@ -15,8 +15,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// $todo(jefflill):
+//
+// I wasn't able to get this to work.  It does seem to be able to transmit data
+// between a local socket and the remote pod, but the SSH protocol negotiation
+// looks like it's crapping out.
+//
+// I'm going to recode this by using the [neon/kubectl port-forward] command and
+// see whether that works.
+
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.Linq;
@@ -31,9 +41,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
+
 using k8s;
 using k8s.Models;
-using Microsoft.VisualStudio.Language.Intellisense;
 using Neon.Common;
 using Neon.Net;
 
@@ -74,15 +86,12 @@ namespace KubernetesDebugger
             /// <summary>
             /// Constructor.
             /// </summary>
-            /// <param name="localSocket">Specifies the local socket.</param>
-            /// <param name="webSocket">Specifies the websocket to the remote pod.</param>
-            public Connection(Socket localSocket, WebSocket webSocket)
+            /// <param name="kubectlProcess">Specifies the neon/kubectl process handling the port forwarding.</param>
+            public Connection(Process kubectlProcess)
             {
-                Covenant.Requires<ArgumentNullException>(localSocket != null, nameof(localSocket));
-                Covenant.Requires<ArgumentNullException>(webSocket != null, nameof(webSocket));
+                Covenant.Requires<ArgumentNullException>(kubectlProcess != null, nameof(kubectlProcess));
 
-                this.LocalSocket = localSocket;
-                this.WebSocket   = webSocket;
+                this.KubectlProcess = kubectlProcess;
             }
 
             /// <inheritdoc/>
@@ -92,11 +101,8 @@ namespace KubernetesDebugger
                 {
                     isDisposed = true;
 
-                    LocalSocket?.Dispose();
-                    LocalSocket = null;
-
-                    WebSocket?.Dispose();
-                    WebSocket = null;
+                    KubectlProcess?.Kill();
+                    KubectlProcess = null;
 
                     GC.SuppressFinalize(this);
                 }
@@ -108,14 +114,9 @@ namespace KubernetesDebugger
             public Guid Id { get; private set; } = Guid.NewGuid();
 
             /// <summary>
-            /// Holds the local socket.
+            /// Holds the neon/kubectl process handling the port forwarding.
             /// </summary>
-            public Socket LocalSocket;
-
-            /// <summary>
-            /// Holds the websocket to the remote pod.
-            /// </summary>
-            public WebSocket WebSocket;
+            public Process KubectlProcess;
         }
 
         //---------------------------------------------------------------------
@@ -139,23 +140,18 @@ namespace KubernetesDebugger
         /// <param name="namespace">Specifies the target pod namespace.</param>
         /// <param name="podPort">Specifies the target pod network port.</param>
         /// <param name="mode">Specifes the connection mode (defaults to <see cref="ConnectionMode.Normal"/>).</param>
-        /// <param name="localPort">Optionally specifies the local port (defaults to an unused ephemeral port).</param>
         /// <returns></returns>
-        public static async Task<PortForwarder> StartAsync(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode = ConnectionMode.Normal, int localPort = 0)
+        public static async Task<PortForwarder> StartAsync(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode = ConnectionMode.Normal)
         {
-Log.Info("PortForwarder.StartAsync: ENTER");
             Covenant.Requires<ArgumentNullException>(k8s != null, nameof(k8s));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(name), nameof(name));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(@namespace), nameof(@namespace));
 
             // Create a temporary websocket to ensure that the pod exists and is ready for connections.
 
-Log.Info("PortForwarder.StartAsync: 1");
             using var webSocket = await k8s.WebSocketNamespacedPodPortForwardAsync(name, @namespace, new int[] { podPort });
-Log.Info("PortForwarder.StartAsync: 2");
 
-Log.Info("PortForwarder.StartAsync: EXIT");
-            return new PortForwarder(k8s, name, @namespace, podPort, mode, localPort);
+            return new PortForwarder(k8s, name, @namespace, podPort, mode);
         }
 
         //---------------------------------------------------------------------
@@ -166,7 +162,6 @@ Log.Info("PortForwarder.StartAsync: EXIT");
         private string                          podNamespace;
         private ConnectionMode                  mode;
         private bool                            isDisposed;
-        private Socket                          listener;
         private Dictionary<Guid, Connection>    connections = new Dictionary<Guid, Connection>();
         private CancellationTokenSource         cts         = new CancellationTokenSource();
         private object                          syncLock    = new object();
@@ -179,41 +174,48 @@ Log.Info("PortForwarder.StartAsync: EXIT");
         /// <param name="namespace">Specifies the target pod namespace.</param>
         /// <param name="podPort">Specifies the target pod port.</param>
         /// <param name="mode">Specifes the connection mode.</param>
-        /// <param name="localPort">Specifies the local port or 0 to choose an unused ephemeral port.</param>
-        internal PortForwarder(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode, int localPort)
+        internal PortForwarder(IKubernetes k8s, string name, string @namespace, int podPort, ConnectionMode mode)
         {
-Log.Info("PortForwarder.Constructor: ENTER");
-            this.k8s          = k8s;
-            this.podName      = name;
-            this.podNamespace = @namespace;
-            this.mode         = mode;
-            this.PodPort      = podPort;
-            this.listener     = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            this.k8s           = k8s;
+            this.podName       = name;
+            this.podNamespace  = @namespace;
+            this.mode          = mode;
+            this.PodPort       = podPort;
+            this.LocalEndpoint = new IPEndPoint(IPAddress.Loopback, NetHelper.GetUnusedTcpPort());
 
-Log.Info("PortForwarder.Constructor: 1");
-            listener.Bind(new IPEndPoint(IPAddress.Loopback, localPort));
-Log.Info("PortForwarder.Constructor: 2");
-            listener.Listen(100);
-Log.Info("PortForwarder.Constructor: 3");
+            try
+            {
+                var startInfo = new ProcessStartInfo(AttachKubernetesCommand.KubectlPath, $"port-forward -n {podNamespace} pod/{podName} {LocalEndpoint.Port}:{NetworkPorts.SSH}")
+                {
+                    CreateNoWindow = true
+                };
 
-            this.LocalEndpoint = (IPEndPoint)listener.LocalEndPoint;
+                var kubectlProcess = Process.Start(startInfo);
 
-            _ = ListenAsync();
-Log.Info("PortForwarder.Constructor: EXIT");
+                AddConnection(new Connection(kubectlProcess));
+            }
+            catch
+            {
+                VsShellUtilities.ShowMessageBox(
+                    KubernetesDebuggerPackage.Instance,
+                    "Cannot launch the [neon.exe] or [kubectl.exe] client.",
+                    "ERROR: Attach Kubernetes",
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+                return;
+            }
         }
 
         /// <inheritdoc/>
         public void Dispose()
         {
-Log.Info("PortForwarder.Dispose: ENTER");
             lock (syncLock)
             {
                 if (!isDisposed)
                 {
                     isDisposed = true;
-
-                    listener?.Dispose();
-                    listener = null;
 
                     lock (connections)
                     {
@@ -229,7 +231,6 @@ Log.Info("PortForwarder.Dispose: ENTER");
                     GC.SuppressFinalize(this);
                 }
             }
-Log.Info("PortForwarder.Dispose: EXIT");
         }
 
         /// <summary>
@@ -244,69 +245,15 @@ Log.Info("PortForwarder.Dispose: EXIT");
         public IPEndPoint LocalEndpoint { get; private set; }
 
         /// <summary>
-        /// Listens for local socket connections and then starts proxying traffic to the pod.
-        /// </summary>
-        /// <returns>The tracking <see cref="Task"/>.</returns>
-        private async Task ListenAsync()
-        {
-Log.Info("PortForwarder.ListenAsync: ENTER");
-            // We're going to spin up a proxy for every connection to the local
-            // listening socket and let that run as an independent task until the
-            // connection is closed.
-            //
-            // We're going to keep track of the connection related objects so we
-            // can dispose them when the parent [PortForwarder] is disposed.
-
-            try
-            {
-Log.Info("PortForwarder.ListenAsync: 1");
-                while (!isDisposed)
-                {
-                    _ = ProxyAsync(await listener.AcceptAsync());
-Log.Info("PortForwarder.ListenAsync: ACCEPT");
-
-                    if (mode == ConnectionMode.Single)
-                    {
-Log.Info("PortForwarder.ListenAsync: 3");
-                        break;
-                    }
-                }
-
-                // Stop listening on the local port and then wait forever
-                // for the CTS to be cancelled.
-
-Log.Info("PortForwarder.ListenAsync: 4");
-                lock (syncLock)
-                {
-                    listener.Dispose();
-                    listener = null;
-                }
-
-Log.Info("PortForwarder.ListenAsync: 5");
-                await Task.Delay(-1, cts.Token);
-Log.Info("PortForwarder.ListenAsync: 6");
-            }
-            catch
-            {
-Log.Info("PortForwarder.ListenAsync: ERROR ******");
-                // Intentionally ignoring errors.
-            }
-Log.Info("PortForwarder.ListenAsync: EXIT");
-        }
-
-        /// <summary>
         /// Adds a connection to the connection dictionary.
         /// </summary>
         /// <param name="connection">Specifies the connection to be added.</param>
         private void AddConnection(Connection connection)
         {
-Log.Info("PortForwarder.AddConnection: ENTER");
             lock (syncLock)
             {
-Log.Info("PortForwarder.AddConnection: 1");
                 connections.Add(connection.Id, connection);
             }
-Log.Info("PortForwarder.AddConnection: EXIT");
         }
 
         /// <summary>
@@ -315,129 +262,10 @@ Log.Info("PortForwarder.AddConnection: EXIT");
         /// <param name="connection">Specifies the connection to be removed.</param>
         private void RemoveConnection(Connection connection)
         {
-Log.Info("PortForwarder.RemoveConnection: ENTER");
             lock (syncLock)
             {
-Log.Info("PortForwarder.RemoveConnection: 1");
                 connections.Remove(connection.Id);
             }
-Log.Info("PortForwarder.RemoveConnection: EXIT");
-        }
-
-        /// <summary>
-        /// Proxies traffic between the local socket and the pod.
-        /// </summary>
-        /// <param name="localSocket">Specifies the local socket.</param>
-        /// <returns>The tracking <see cref="Task"/>.</returns>
-        private async Task ProxyAsync(Socket localSocket)
-        {
-Log.Info("ProxyAsync: ENTER");
-            var webSocket  = await k8s.WebSocketNamespacedPodPortForwardAsync(podName, podNamespace, new int[] { PodPort });
-            var connection = new Connection(localSocket, webSocket);
-
-            AddConnection(connection);
-Log.Info("ProxyAsync: 1");
-
-            try
-            {
-                var tasks = new Task[]
-                {
-                    SendLoopAsync(connection),
-                    ReceiveLoopAsync(connection)
-                };
-
-                await Task.WhenAll(tasks);
-Log.Info("ProxyAsync: 2");
-            }
-            catch
-            {
-Log.Info("ProxyAsync: ERROR ******");
-                // Intentionally ignoring errors.
-            }
-            finally
-            {
-Log.Info("ProxyAsync: FINALLY");
-                RemoveConnection(connection);
-                connection.Dispose();
-
-                if (mode == ConnectionMode.Single)
-                {
-                    this.Dispose();
-                }
-            }
-Log.Info("ProxyAsync: EXIT");
-        }
-
-        /// <summary>
-        /// Handles forwarding of traffic sent by the connection's local socket to the remote pod.
-        /// </summary>
-        /// <param name="connection">Specifies the connection.</param>
-        /// <returns>The tracking <see cref="Task"/>.</returns>
-        private async Task SendLoopAsync(Connection connection)
-        {
-Log.Info("SendLoopAsync: ENTER");
-            var localSocket = connection.LocalSocket;
-            var buffer      = new byte[BufferSize];
-
-            try
-            {
-                while (true)
-                {
-                    var cbRead = await localSocket.ReceiveAsync(new ArraySegment<byte>(buffer, 0, BufferSize), SocketFlags.None);
-Log.Info($"SendLoopAsync: RECEIVE FROM-VS {cbRead} bytes");
-Log.Info($"SendLoopAsync: RECEIVE FROM-VS:\r\n\r\n" + NeonHelper.HexDump(buffer, 0, cbRead, 16, HexDumpOption.ShowAnsi));
-
-                    if (cbRead == 0)
-                    {
-Log.Info("SendLoopAsync: EOF");
-                        return; // EOF: local socket has closed
-                    }
-
-Log.Info($"SendLoopAsync: SEND {cbRead} bytes");
-                    await connection.WebSocket.SendAsync(new ArraySegment<byte>(buffer, 0, cbRead), WebSocketMessageType.Binary, true, cts.Token);
-                }
-            }
-            catch
-            {
-Log.Info("SendLoopAsync: ERROR ******");
-                // Intentionally ignoring errors.
-            }
-Log.Info("SendLoopAsync: EXIT");
-        }
-
-        /// <summary>
-        /// Handles forwarding of traffic sent by the remote pod to the local socket.
-        /// </summary>
-        /// <param name="connection">Specifies the connection.</param>
-        /// <returns>The tracking <see cref="Task"/>.</returns>
-        private async Task ReceiveLoopAsync(Connection connection)
-        {
-Log.Info("ReceiveLoopAsync: ENTER");
-            var buffer        = new byte[BufferSize];
-            var receiveBuffer = new ArraySegment<byte>(buffer, 0, BufferSize);
-
-            try
-            {
-                while (true)
-                {
-                    var cbRead      = (await connection.WebSocket.ReceiveAsync(receiveBuffer, cts.Token)).Count;
-                    var cbRemaining = cbRead;
-
-Log.Info($"ReceiveLoopAsync: RECEIVE FROM-POD {cbRead} bytes");
-Log.Info("ReceiveLoopAsync: RECEIVE FROM-POD:\r\n\r\n" + NeonHelper.HexDump(buffer, 0, cbRead, 16, HexDumpOption.ShowAnsi));
-                    while (cbRemaining > 0)
-                    {
-Log.Info($"ReceiveLoopAsync: SEND {cbRemaining} remaining bytes");
-                        cbRemaining -= await connection.LocalSocket.SendAsync(new ArraySegment<byte>(buffer, cbRead - cbRemaining, cbRemaining), SocketFlags.None);
-                    }
-                }
-            }
-            catch
-            {
-Log.Info("ReceiveLoopAsync: ERROR ******");
-                // Intentionally ignoring errors.
-            }
-Log.Info("ReceiveLoopAsync: EXIT");
         }
     }
 }

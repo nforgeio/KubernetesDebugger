@@ -44,6 +44,7 @@ using Newtonsoft.Json.Linq;
 
 using DialogResult = System.Windows.Forms.DialogResult;
 using Task         = System.Threading.Tasks.Task;
+using EnvDTE;
 
 namespace KubernetesDebugger
 {
@@ -52,6 +53,9 @@ namespace KubernetesDebugger
     /// </summary>
     internal sealed class AttachKubernetesCommand
     {
+        //---------------------------------------------------------------------
+        // Static members
+
         /// <summary>
         /// Command ID.
         /// </summary>
@@ -61,6 +65,108 @@ namespace KubernetesDebugger
         /// Command menu group (command set GUID).
         /// </summary>
         public static readonly Guid CommandSet = new Guid("417f9fa6-cc1f-47ed-96ee-d42a8f5dbb95");
+
+        /// <summary>
+        /// Returns the path to the neon or kubectl executable or <c>null</c> when neither
+        /// of these can be located.
+        /// </summary>
+        public static string KubectlPath { get; private set; }
+
+        /// <summary>
+        /// Initializes the singleton instance of the command.
+        /// </summary>
+        /// <param name="package">Owner package, not null.</param>
+        public static async Task InitializeAsync(AsyncPackage package)
+        {
+            // Switch to the main thread - the call to AddCommand in AttachKubernetesCommand's constructor requires
+            // the UI thread.
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
+
+            var commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
+
+            Instance = new AttachKubernetesCommand(package, commandService);
+
+            // We're currently using neon/kubectl to handle port forwarding from the
+            // local machine to the remote pod for the Visual Studio SSH debug adapter.
+            //
+            // We need to locate one of these on the PATH.  We're going to favor the neon
+            // client if present.  We're going to remember this for the current Visual Studio
+            // session.  If we don't find a client, we'll report that to the user when the
+            // debug command is executed.
+
+            // Look for: neon.exe
+
+            if (string.IsNullOrEmpty(KubectlPath))
+            {
+                foreach (var rawPath in Environment.GetEnvironmentVariable("PATH").Split(';'))
+                {
+                    var path = rawPath.Trim();
+
+                    if (path == string.Empty)
+                    {
+                        continue;
+                    }
+
+                    if (Directory.Exists(path))
+                    {
+                        var cliPath = Path.Combine(path, "neon.exe");
+
+                        if (File.Exists(cliPath))
+                        {
+                            KubectlPath = cliPath;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Special-case maintainer build machines looking for: %NC_ROOT%\Build\neon-cli\neon.exe
+
+            if (NeonHelper.IsMaintainer && string.IsNullOrEmpty(KubectlPath))
+            {
+                var ncRoot = Environment.GetEnvironmentVariable("NC_ROOT");
+
+                if (ncRoot != null)
+                {
+                    var path = Path.Combine(ncRoot, "Build", "neon-cli", "neon.exe");
+
+                    if (File.Exists(path))
+                    {
+                        KubectlPath = path;
+                    }
+                }
+            }
+
+            // Look for: kubectl.exe
+
+            if (string.IsNullOrEmpty(KubectlPath))
+            {
+                foreach (var rawPath in Environment.GetEnvironmentVariable("PATH").Split(';'))
+                {
+                    var path = rawPath.Trim();
+
+                    if (path == string.Empty)
+                    {
+                        continue;
+                    }
+
+                    if (Directory.Exists(path))
+                    {
+                        var cliPath = Path.Combine(path, "kubectl.exe");
+
+                        if (File.Exists(cliPath))
+                        {
+                            KubectlPath = cliPath;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        //---------------------------------------------------------------------
+        // Instance members
 
         /// <summary>
         /// Provides access to Visual Studio commands, etc.
@@ -102,22 +208,6 @@ namespace KubernetesDebugger
         private IAsyncServiceProvider ServiceProvider => package;
 
         /// <summary>
-        /// Initializes the singleton instance of the command.
-        /// </summary>
-        /// <param name="package">Owner package, not null.</param>
-        public static async Task InitializeAsync(AsyncPackage package)
-        {
-            // Switch to the main thread - the call to AddCommand in AttachKubernetesCommand's constructor requires
-            // the UI thread.
-
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
-
-            var commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
-
-            Instance = new AttachKubernetesCommand(package, commandService);
-        }
-
-        /// <summary>
         /// This function is the callback used to execute the command when the menu item is clicked.
         /// See the constructor to see how the menu item is associated with this function using
         /// OleMenuCommandService service and MenuCommand class.
@@ -126,9 +216,18 @@ namespace KubernetesDebugger
         /// <param name="args">Specfies the event args.</param>
         private async void Execute(object sender, EventArgs args)
         {
-            // $todo(jefflill): Add SHELL button to dialog. 
-            //
-            // neon exec -it -n=neon-system neon-cluster-operator-2p22s -c vs-debug.neon-cluster-operator -- /bin/bash
+            if (string.IsNullOrEmpty(KubectlPath))
+            {
+                VsShellUtilities.ShowMessageBox(
+                    KubernetesDebuggerPackage.Instance,
+                    "Cannot locate the [neon.exe] or [kubectl.exe] Kubernetes client on the PATH.",
+                    "ERROR: Attach Kubernetes",
+                    OLEMSGICON.OLEMSGICON_CRITICAL,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OK,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+
+                return;
+            }
 
             try
             {
@@ -167,7 +266,7 @@ namespace KubernetesDebugger
                 VsShellUtilities.ShowMessageBox(
                     KubernetesDebuggerPackage.Instance,
                     NeonHelper.ExceptionError(e),
-                    "ERROR",
+                    "ERROR: Attach Kubernetes",
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
                     OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
@@ -188,14 +287,19 @@ namespace KubernetesDebugger
         /// <returns>The tracking <see cref="Task"/>.</returns>
         /// <exception cref="TimeoutException">Thrown when the debug container didn't start in time.</exception>
         /// <exception cref="InvalidOperationException">Thrown when a terminated debug container with the same name is already attached to the pod.</exception>
-        private async Task AttachDebugContainerAsync(Kubernetes k8s, V1Pod targetPod, V1Container targetContainer, int targetProcessId, string debugContainerName, TimeSpan timeout = default)
+        private async Task AttachDebugContainerAsync(
+            Kubernetes      k8s, 
+            V1Pod           targetPod, 
+            V1Container     targetContainer, 
+            int             targetProcessId, 
+            string          debugContainerName, 
+            TimeSpan        timeout = default)
         {
             Covenant.Requires<ArgumentNullException>(k8s != null, nameof(k8s));
             Covenant.Requires<ArgumentNullException>(targetPod != null, nameof(targetPod));
             Covenant.Requires<ArgumentNullException>(targetContainer != null, nameof(targetContainer));
             Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(debugContainerName), nameof(debugContainerName));
 
-Log.Info("AttachDebugContainerAsync: ENTER");
             if (timeout == default(TimeSpan))
             {
                 timeout = TimeSpan.FromSeconds(120);
@@ -257,7 +361,7 @@ $@"
                             // $todo(jefflill):
                             //
                             // I think we could relax this constraint by attaching another ephemeral container with
-                            // a different name like "vs-debug.1.target", "vs-debug.2.target",...
+                            // a different name like "vs-debug-1-target", "vs-debug-2-target",...
                             //
                             // I'm not sure whether this wild be very useful though, since the user currently has to
                             // manually terminate the debug container by stopping the SSHD server running there.
@@ -284,10 +388,7 @@ $@"
                 // Establish network proxy between a local loopback ephemeral port and the SSHD server
                 // running in the new ephemeral container.
 
-Log.Info("------------------------------------------------------------");
-Log.Info("AttachDebugContainerAsync: 1");
                 portForwarder = await PortForwarder.StartAsync(k8s, targetPod.Name(), targetPod.Namespace(), NetworkPorts.SSH, PortForwarder.ConnectionMode.Single);
-Log.Info("AttachDebugContainerAsync: 2");
 
                 // Generate a temporary [launch.json] file and launch the VS debugger.
 
@@ -310,31 +411,26 @@ Log.Info("AttachDebugContainerAsync: 2");
 
                     try
                     {
-Log.Info("AttachDebugContainerAsync: 3");
                         dte.ExecuteCommand("DebugAdapterHost.Launch", $"/LaunchJson:\"{tempFile.Path}\"");
-Log.Info("AttachDebugContainerAsync: 4");
                     }
                     catch (Exception e)
                     {
-Log.Error($"AttachDebugContainerAsync: 5 : {NeonHelper.ExceptionError(e)}");
                         Console.WriteLine(e);
                     }
                 }
             }
             catch (Exception e)
             {
-Log.Info("AttachDebugContainerAsync: 6");
                 portForwarder?.Dispose();
 
                 VsShellUtilities.ShowMessageBox(
                     KubernetesDebuggerPackage.Instance,
                     NeonHelper.ExceptionError(e),
-                    "ERROR",
+                    "ERROR: Attach Kubernetes",
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
                     OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
             }
-Log.Info("AttachDebugContainerAsync: EXIT");
         }
 
         /// <summary>

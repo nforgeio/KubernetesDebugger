@@ -230,7 +230,7 @@ namespace KubernetesDebugger
                 VsShellUtilities.ShowMessageBox(
                     KubernetesDebuggerPackage.Instance,
                     NeonHelper.ExceptionError(e),
-                    "ERROR",
+                    "ERROR: Attach Kubernetes",
                     OLEMSGICON.OLEMSGICON_CRITICAL,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
                     OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);

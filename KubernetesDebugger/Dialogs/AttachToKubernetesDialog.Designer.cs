@@ -256,6 +256,7 @@
             this.traceButton.TabIndex = 10;
             this.traceButton.Text = "Trace";
             this.traceButton.UseVisualStyleBackColor = true;
+            this.traceButton.Visible = false;
             this.traceButton.Click += new System.EventHandler(this.traceButton_Click);
             // 
             // AttachToKubernetesDialog

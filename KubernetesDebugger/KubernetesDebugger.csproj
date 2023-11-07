@@ -60,6 +60,7 @@
     <Compile Include="Kubernetes\KubernetesExtensions.cs" />
     <Compile Include="Helpers\ProcessInfo.cs" />
     <Compile Include="Kubernetes\PortForwarder.cs" />
+    <Compile Include="Kubernetes\PortForwarder.save.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="KubernetesDebuggerPackage.cs" />
   </ItemGroup>
