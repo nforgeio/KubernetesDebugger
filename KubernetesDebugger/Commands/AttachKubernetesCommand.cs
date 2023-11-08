@@ -392,26 +392,11 @@ $@"
 
                 // Generate a temporary [launch.json] file and launch the VS debugger.
 
-                using (var tempFile = await CreateLaunchSettingsAsync(portForwarder, targetProcessId))
+                using (var launchInfo = await CreateLaunchSettingsAsync(portForwarder, targetProcessId))
                 {
-                    //###############################
-                    // $debug(jefflill): DELETE THIS!
-
-                    var tempFilePath = @"C:\Temp\launch.json";
-
-                    if (File.Exists(tempFilePath))
-                    {
-                        File.Delete(tempFilePath);
-                    }
-
-                    File.Copy(tempFile.Path, tempFilePath);
-
-                    //await Task.Delay(-1);
-                    //###############################
-
                     try
                     {
-                        dte.ExecuteCommand("DebugAdapterHost.Launch", $"/LaunchJson:\"{tempFile.Path}\"");
+                        dte.ExecuteCommand("DebugAdapterHost.Launch", $"/LaunchJson:\"{launchInfo.SettingPath}\"");
                     }
                     catch (Exception e)
                     {
@@ -434,13 +419,48 @@ $@"
         }
 
         /// <summary>
-        /// Creates the temporary launch settings file we'll use for launching <b>vsdbg</b> in
+        /// Holds debugger launch related information.
+        /// </summary>
+        public sealed class LaunchInfo : IDisposable
+        {
+            private TempFolder      folder;
+
+            /// <summary>
+            /// Constructor.
+            /// </summary>
+            /// <param name="folder">Specifies the temporary folder holding the launch setting related files.</param>
+            /// <param name="settingsPath">Specifies the path to the generated launch file.</param>
+            public LaunchInfo(TempFolder folder, string settingsPath)
+            {
+                Covenant.Requires<ArgumentNullException>(folder != null, nameof(folder));
+                Covenant.Requires<ArgumentNullException>(!string.IsNullOrEmpty(settingsPath), nameof(settingsPath));
+
+                this.folder      = folder;
+                this.SettingPath = settingsPath;
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                folder?.Dispose();
+                folder = null;
+            }
+
+            /// <summary>
+            /// Returns the path to the generated launch settings file.
+            /// </summary>
+            public string SettingPath { get; private set; }
+        }
+
+        /// <summary>
+        /// Creates the temporary launch settings and SSH private key files we'll use for launching <b>vsdbg</b> in
         /// the ephemeral container.
         /// </summary>
         /// <param name="portForwarder">Specifies the port forwarder being used.</param>
         /// <param name="targetProcessId">Specifies the ID of the target process in the target container.</param>
-        /// <returns>The <see cref="TempFile"/> referencing the created launch file.</returns>
-        private async Task<TempFile> CreateLaunchSettingsAsync(PortForwarder portForwarder, int targetProcessId)
+        /// <param name="launchPath">Returns as the path to the launch file.</param>
+        /// <returns>The generated <see cref="LaunchInfo"/>.  Be sure to dispose this such that the folder holding the files is deleted.</returns>
+        private async Task<LaunchInfo> CreateLaunchSettingsAsync(PortForwarder portForwarder, int targetProcessId)
         {
             Covenant.Requires<ArgumentNullException>(portForwarder != null, nameof(portForwarder));
 
@@ -450,13 +470,16 @@ $@"
             //      https://github.com/Microsoft/MIEngine/wiki/Offroad-Debugging-of-.NET-Core-on-Linux---OSX-from-Visual-Studio#attaching
 
             var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var userFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var tempFolder = new TempFolder(folder: Path.Combine(userFolder, ".ssh"), prefix: "vs-debug-"); // This needs to be here for security
+            var keyPath    = Path.Combine(tempFolder.Path, "key");
 
             var settings =
                 new JObject
                 (
                     new JProperty("version", "0.2.1"),
                     new JProperty("adapter", Path.Combine(systemRoot, "System32", "OpenSSH", "ssh.exe")),
-                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@127.0.0.1 -p {portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode"),
+                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@127.0.0.1 -i \"{keyPath}\" -p {portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode --engineLogging=/vsdbg.log"),
                     new JProperty("configurations",
                         new JArray
                         (
@@ -471,14 +494,12 @@ $@"
                     )
                 );
 
-            var tempFile = new TempFile(".launch.json", folder: @"C:\Temp");    // $debug(jefflill): REMOVE THE FOLDER ARG!
+            var launchPath = Path.Combine(tempFolder.Path, "launch.json");
 
-            using (var stream = new FileStream(tempFile.Path, FileMode.CreateNew, FileAccess.ReadWrite))
-            {
-                await stream.WriteAsync(Encoding.UTF8.GetBytes(settings.ToString()));
-            }
+            File.WriteAllText(keyPath, KubernetesDebuggerPackage.PrivateSshKey);
+            File.WriteAllText(launchPath, settings.ToString(Newtonsoft.Json.Formatting.Indented));
 
-            return tempFile;
+            return await Task.FromResult(new LaunchInfo(tempFolder, launchPath));
         }
     }
 }
