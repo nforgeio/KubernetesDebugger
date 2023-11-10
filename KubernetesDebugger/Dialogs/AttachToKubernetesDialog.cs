@@ -687,10 +687,24 @@ namespace KubernetesDebugger
 
                     if (TargetPod != null && TargetPod.Spec.Containers.Count > 0)
                     {
-                        // We're going to ignore any of our debug ephermeral containers.
+                        // We're going to ignore any of our debug ephermeral containers as well
+                        // as any containers that haven't started yet.
+
+                        var runningContainers = new HashSet<string>();
+
+                        if (TargetPod.Status.ContainerStatuses != null)
+                        {
+                            foreach (var containerStatus in TargetPod.Status.ContainerStatuses)
+                            {
+                                if (containerStatus.Started == true)
+                                {
+                                    runningContainers.Add(containerStatus.Name);
+                                }
+                            }
+                        }
 
                         currentContainers = TargetPod.Spec.Containers
-                            .Where(container => !container.Name.StartsWith("vs-debug."))
+                            .Where(container => !container.Name.StartsWith("vs-debug.") && runningContainers.Contains(container.Name))
                             .ToList();
 
                         foreach (var container in currentContainers)

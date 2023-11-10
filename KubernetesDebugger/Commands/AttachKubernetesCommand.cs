@@ -479,7 +479,7 @@ $@"
                 (
                     new JProperty("version", "0.2.1"),
                     new JProperty("adapter", Path.Combine(systemRoot, "System32", "OpenSSH", "ssh.exe")),
-                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@127.0.0.1 -i \"{keyPath}\" -p {portForwarder.LocalEndpoint.Port} /vsdbg/vsdbg --interpreter=vscode --engineLogging=/vsdbg.log"),
+                    new JProperty("adapterArgs", $"-o \"StrictHostKeyChecking no\" root@localhost -i \"{keyPath}\" -p {portForwarder.LocalEndpoint.Port} -vvv /vsdbg/vsdbg --interpreter=vscode --engineLogging=/vsdbg.log"),
                     new JProperty("configurations",
                         new JArray
                         (
@@ -497,6 +497,7 @@ $@"
             var launchPath = Path.Combine(tempFolder.Path, "launch.json");
 
             File.WriteAllText(keyPath, KubernetesDebuggerPackage.PrivateSshKey);
+            File.WriteAllText(keyPath + ".pub", KubernetesDebuggerPackage.PublicSshKey);
             File.WriteAllText(launchPath, settings.ToString(Newtonsoft.Json.Formatting.Indented));
 
             return await Task.FromResult(new LaunchInfo(tempFolder, launchPath));
