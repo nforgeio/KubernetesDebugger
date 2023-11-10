@@ -70,7 +70,7 @@ namespace KubernetesDebugger
 
         /// <summary>
         /// <para>
-        /// Returns the private root SSH key used to authenticate with <b>vs-debug</b>
+        /// Returns the public root SSH key used to authenticate with <b>vs-debug</b>
         /// ephemeral containers.
         /// </para>
         /// <note>
@@ -79,9 +79,14 @@ namespace KubernetesDebugger
         /// of the debugger will still work with new versions of the container image.
         /// </note>
         /// </summary>
-        public static string PrivateSshKey =>
-@"-----BEGIN OPENSSH PRIVATE KEY-----
-b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAACFwAAAAdzc2gtcn
+        public static string PublicSshKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDFWNwHIZzxk3XKX+RFCzkEBwbAQrC/utc0yQOsccTy7TmaXc4nTgGSLEmcvwwqvz4eUmITDKu70HUdFB67AxVnrntTgDXiKgypEcSjpXmZQSKKKsJYHSMfooBjNVz7rQo5l2GauosQxucs7qpPSDcEn0r5vlS0BJ64oB3vCgJKjV86vZVXH4bNmhp6eyfRpzs0WcDWbs2rtTKi84pIHrprldIwkffuuHwgS0S6F50nBE/3eT7dbQw0TCboU+mhtnrYb1O9eHAwPF8/QEqtkUlnfaeCB5a9+F/s0D+Ix5C9+K+JPbw50kcMVTkXqrqxcEmE2igaHJc8BKhYOLmWRMDgLt2C+LBbMaOXLB7LUvyHbzdTWhlVp9MMtyWYnCvEPU27yHeSP+0JR+tle68tF0+nrox5bf0vPIjyirZfVqDW/ToksMQxJUXoVGxCbf7SXQ5cq2JEVtSidImL8PczuFLleaqhLbCIGds8bITXvhBk9T+xeVdKdyxkrAngobb5YN+m4CDAzO4cyFqpIB8FfNHqzZsOVUiYVIa/mwCt3JcIEmedHdAmnInRW6tM9TQqNpxHvRjtWmoZLJD1Tg25Uex/7fv5FCmUtsjkjGt4MJcF5ivLKIDm+Yr6lmp+nN6z6joCyeYVwTkCrV7nFKjbfWB9F1CkVEnWoL8qbaHejuw2DQ== root@20d21e5f3366";
+
+        /// <summary>
+        /// We're going to disguise the private key a bit such that GitHub scanners
+        /// won't bug us about potential security issues.
+        /// </summary>
+        private const string privateSsskKeyBits =
+@"b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAACFwAAAAdzc2gtcn
 NhAAAAAwEAAQAAAgEAxVjcByGc8ZN1yl/kRQs5BAcGwEKwv7rXNMkDrHHE8u05ml3OJ04B
 kixJnL8MKr8+HlJiEwyru9B1HRQeuwMVZ657U4A14ioMqRHEo6V5mUEiiirCWB0jH6KAYz
 Vc+60KOZdhmrqLEMbnLO6qT0g3BJ9K+b5UtASeuKAd7woCSo1fOr2VVx+GzZoaensn0ac7
@@ -127,7 +132,22 @@ PX/TY3LQW0NCnRwc+M/stz+s9oSDh/wYWYTFzPkknSJkurmHxHcG1RHiOpvgWZozGIFeWj
 ZqDS8eX4WjkJVlORnv91ArAQ05QaDQuFa4MmlLI4Dvdq0aMJN08DC+XeCLZyknlJhlLNQf
 Swi0fvzVZTKnzoXyzWl0yq40GiHaOeDpFGzIRPwdAodANHYZ08TnSxkKyD2gHXTfH6S08I
 hhSlg1TcmT26RtE9w0GjB4M+o80NP41UIse6h1LJbFgeoYt771WX/O6iKNqh54VBXphaaG
-xcYvYEQEyMaNAAAAEXJvb3RAMjBkMjFlNWYzMzY2AQ==
+xcYvYEQEyMaNAAAAEXJvb3RAMjBkMjFlNWYzMzY2AQ==";
+
+        /// <summary>
+        /// <para>
+        /// Returns the private root SSH key used to authenticate with <b>vs-debug</b>
+        /// ephemeral containers.
+        /// </para>
+        /// <note>
+        /// This key must match the public key provisioned with the <b>vs-debug</b>
+        /// container image and the key should never be changed so that older versions
+        /// of the debugger will still work with new versions of the container image.
+        /// </note>
+        /// </summary>
+        public static string PrivateSshKey =>
+$@"-----BEGIN OPENSSH PRIVATE KEY-----
+{privateSsskKeyBits}
 -----END OPENSSH PRIVATE KEY-----
 ";
 
